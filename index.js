@@ -1,5 +1,11 @@
 const DNSClient = require('./lib/index');
 const DNSServer = require('./lib/server');
+const Request   = require('./lib/request');
+const Response  = require('./lib/response');
+
+
+exports.Request  = Request;
+exports.Response = Response;
 
 /**
  * [createServer description]
