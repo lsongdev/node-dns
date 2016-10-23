@@ -8,7 +8,7 @@ const DNSServer = require('./lib/server');
  */
 exports.createServer = function(callback){
   var server = new DNSServer();
-  server.on('query', callback);
+  server.on('request', callback);
   return server;
 };
 

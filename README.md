@@ -17,4 +17,6 @@ var server = dns.createServer(function(req, res){
 
 }).listen(5353);
 
+// dig @127.0.0.1 -p5353 lsong.org
+
 ```
