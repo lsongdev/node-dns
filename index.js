@@ -1,9 +1,9 @@
 const DNSClient = require('./lib/index');
 const DNSServer = require('./lib/server');
-const Request   = require('./lib/request');
-const Response  = require('./lib/response');
+const Packet = require('./packet');
 
-
+exports.Client = DNSClient;
+exports.Server = DNSServer;
 exports.Request  = Request;
 exports.Response = Response;
 
@@ -24,7 +24,7 @@ exports.createServer = function(callback){
  * @param  {Function} callback [description]
  * @return {[type]}            [description]
  */
-exports.query = function(domain, callback){
+exports.lookup = function(domain, callback){
   var client = new DNSClient();
   client.query(domain, callback);
   return client;
