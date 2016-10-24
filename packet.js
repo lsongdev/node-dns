@@ -8,8 +8,12 @@ function BufferReader(buf){
  * @return {[type]}        [description]
  */
 BufferReader.prototype.read = function(offset, length){
-  var val = this.buffer.readUInt16BE(Math.ceil(offset/16));
-  console.log(val & 0xffff >> 0);
+  var mask = '', hi = length, mode = offset % 16;
+  var lo = 16 - (mode + hi);
+  while(hi--) mask += 1;
+  while(lo--) mask += 0;
+  var val = this.buffer.readUInt16BE(Math.ceil(offset/16) * 2);
+  return (val & parseInt(mask, 2)) >> (16 - (mode + length));
 };
 
 /**
@@ -48,21 +52,20 @@ function Packet(){
 Packet.parse = function(buffer){
   var packet = new Packet();
   var reader = new BufferReader(buffer);
-  packet.header.id     = reader.read(17, 1);
-  // packet.header.qr     = reader.read(17, 1);
-  // packet.header.opcode = reader.read(18, 4);
-  // packet.header.aa     = reader.read(22, 1);
-  // packet.header.tc     = reader.read(23, 1);
-  // packet.header.rd     = reader.read(24, 1);
-  // packet.header.ra     = reader.read(25, 1);
-  // packet.header.z      = reader.read(26, 3);
-  // packet.header.rcode  = reader.read(29, 4);
+  packet.header.id     = reader.read(0, 16);
+  packet.header.qr     = reader.read(16, 1);
+  packet.header.opcode = reader.read(17, 4);
+  packet.header.aa     = reader.read(21, 1);
+  packet.header.tc     = reader.read(22, 1);
+  packet.header.rd     = reader.read(23, 1);
+  packet.header.ra     = reader.read(24, 1);
+  packet.header.z      = reader.read(25, 3);
+  packet.header.rcode  = reader.read(28, 4);
 
-  // var question         = reader.read(33, 16);
-  // var answer           = reader.read(49, 16);
-  // var authority        = reader.read(65, 16);
-  // var additional       = reader.read(81, 16);
-  // console.log(question);
+  var question         = reader.read(32, 16);
+  var answer           = reader.read(48, 16);
+  var authority        = reader.read(64, 16);
+  var additional       = reader.read(80, 16);
   return packet;
 };
 
