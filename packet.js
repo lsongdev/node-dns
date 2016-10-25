@@ -1,4 +1,5 @@
 function BufferReader(buf){
+  this.offset = 0;
   this.buffer = buf;
 };
 /**
@@ -7,13 +8,17 @@ function BufferReader(buf){
  * @param  {[type]} length [description]
  * @return {[type]}        [description]
  */
-BufferReader.prototype.read = function(offset, length){
+BufferReader.prototype.read = function(length, offset){
+  length = length || 1;
+  offset = this.offset = offset || this.offset;
   var mask = '', hi = length, mode = offset % 16;
   var lo = 16 - (mode + hi);
   while(hi--) mask += 1;
   while(lo--) mask += 0;
-  var val = this.buffer.readUInt16BE(Math.ceil(offset/16) * 2);
-  return (val & parseInt(mask, 2)) >> (16 - (mode + length));
+  var val = this.buffer.readUInt16BE(Math.floor(offset/16) * 2);
+  val = (val & parseInt(mask, 2)) >> (16 - (mode + length));
+  this.offset += length;
+  return val;
 };
 
 /**
@@ -52,38 +57,42 @@ function Packet(){
 Packet.parse = function(buffer){
   var packet = new Packet();
   var reader = new BufferReader(buffer);
-  packet.header.id     = reader.read(0, 16);
-  packet.header.qr     = reader.read(16, 1);
-  packet.header.opcode = reader.read(17, 4);
-  packet.header.aa     = reader.read(21, 1);
-  packet.header.tc     = reader.read(22, 1);
-  packet.header.rd     = reader.read(23, 1);
-  packet.header.ra     = reader.read(24, 1);
-  packet.header.z      = reader.read(25, 3);
-  packet.header.rcode  = reader.read(28, 4);
+  packet.header.id     = reader.read(16);
+  packet.header.qr     = reader.read(1);
+  packet.header.opcode = reader.read(4);
+  packet.header.aa     = reader.read(1);
+  packet.header.tc     = reader.read(1);
+  packet.header.rd     = reader.read(1);
+  packet.header.ra     = reader.read(1);
+  packet.header.z      = reader.read(3);
+  packet.header.rcode  = reader.read(4);
 
-  var question         = reader.read(32, 16);
-  var answer           = reader.read(48, 16);
-  var authority        = reader.read(64, 16);
-  var additional       = reader.read(80, 16);
+  var question         = reader.read(16);
+  var answer           = reader.read(16);
+  var authority        = reader.read(16);
+  var additional       = reader.read(16);
+  
+  console.log('offset', reader.offset);
+  
+  function parseDomainName(str){
+    str = str || '';
+    var len = reader.read(8);
+    if(len == 0) return str;
+    while(len--) 
+      str += String.fromCharCode(reader.read(8));
+    return parseDomainName(str + '.');
+  }
+  
+  packet.question.push({
+    name : parseDomainName(),
+    type : reader.read(16),
+    class: reader.read(16)
+  });
+  
   return packet;
 };
 
-/**
- * [parseDomainName description]
- * @param  {[type]} str [description]
- * @return {[type]}     [description]
- */
-Packet.parseDomainName = function(str){
-  str = str || '';
-  var len = this.read();
-  if(len == 0) return str;
-  while(len--)
-    str += String.fromCharCode(this.read());
-  return this.parseDomainName(str + '.');
-}
-
-Packet.serializeDomainName = function(name){
+function serializeDomainName(name){
   return name.split('.').map(function(part){
     return [].concat.apply([], [ part.length,
       part.split('').map(function(c){
@@ -94,6 +103,5 @@ Packet.serializeDomainName = function(name){
     return a.concat(b);
   });
 };
-
 
 module.exports = Packet;
