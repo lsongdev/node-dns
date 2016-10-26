@@ -1,3 +1,4 @@
+const tcp          = require('net');
 const util         = require('util');
 const dgram        = require('dgram');
 const EventEmitter = require('events');
@@ -9,16 +10,41 @@ const Packet       = require('./packet');
  */
 function DNSServer(){
   var self = this;
-  this.udp = dgram.createSocket('udp4');
-  this.udp.on('message', function(data){
-    self.emit('request', Packet.parse(data));
-  });
+  this.type = 'udp';
+  this.socket = this.createServer();
 };
 
 util.inherits(DNSServer, EventEmitter);
 
+DNSServer.prototype.createServer = function(){
+  var self = this;
+  switch(this.type){
+    case 'udp':
+      this.socket = dgram.createSocket('udp4');
+      this.socket.on('message', this.parse.bind(this));
+      break;
+    case 'tcp':
+      this.socket = tcp.createServer(function(client){
+        client
+        .on('error', console.error)
+        .on('data', self.parse.bind(this));
+      });
+      break;
+  }
+  return this.socket;
+};
+
+
+DNSServer.prototype.parse = function(buffer, remote){
+  var request = Packet.parse(buffer);
+  request.remote = remote;
+  this.emit('request', request);
+};
+
 DNSServer.prototype.send = function(response){
   console.log(response);
+  var remote = response.remote;
+  this.socket.send(response.toBuffer(), remote.port, remote.address);
 };
 
 /**
@@ -28,7 +54,14 @@ DNSServer.prototype.send = function(response){
  * @return {[type]}            [description]
  */
 DNSServer.prototype.listen = function(port, callback){
-  this.udp.bind(port, callback);
+  switch(this.type){
+    case 'udp':
+      this.socket.bind(port, callback);
+      break;
+    case 'tcp':
+      this.socket.listen(port, callback);
+      break;
+  }
 };
 
 module.exports = DNSServer;

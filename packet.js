@@ -1,11 +1,15 @@
+const _ = require('./consts');
 /**
  * [Packet description]
  * @param {[type]} data [description]
  * @docs https://tools.ietf.org/html/rfc1034
  * @docs https://tools.ietf.org/html/rfc1035
  *
- * <Buffer 29 64 01 00 00 01 00 00 00 00 00 00 03 77 77 77 01 7a 02 63 6e 00 00 01 00 01>
- *        |-ID----------- HEADER ----------->| |<-W--W--W-----Z-----C--N>|<------------>|
+ * <Buffer 29 64 01 00 00 01 00 00 00 00 00 00 
+ *       |-ID----------- HEADER ----------->| 
+ *      
+ *  03 77 77 77 01 7a 02 63 6e 00 00 01 00 01>
+ *   <-W--W--W-----Z-----C--N>|<----------->|
  */
 function Packet(data){
   this.header = {
@@ -23,6 +27,10 @@ function Packet(data){
   this.answer = [];
   this.authority = [];
   this.additional = [];
+
+  if(data instanceof Packet){
+    return data;
+  }
   
   if(data instanceof Buffer){
     data = Packet.parse(data);
@@ -71,14 +79,20 @@ Packet.read = function(buffer, offset, length){
  * @return {[type]}        [description]
  */
 Packet.parse = function(buffer){
+
+  if(buffer.length < 12){
+    throw new Error('parse error');
+  }
+
   var offset = 0;
   var read = function(size){
     var val = Packet.read(buffer, offset, size);
     offset += size;
     return val;
   };
+
   var packet = new Packet();
-  
+  // header section
   packet.header.id     = read(16);
   packet.header.qr     = read(1);
   packet.header.opcode = read(4);
@@ -89,82 +103,57 @@ Packet.parse = function(buffer){
   packet.header.z      = read(3);
   packet.header.rcode  = read(4);
 
-  var question         = read(16);
-  var answer           = read(16);
-  var authority        = read(16);
-  var additional       = read(16);
+  var question   = read(16);
+  var answer     = read(16);
+  var authority  = read(16);
+  var additional = read(16);
   
-  // var b = 0, name;
-  // 
-  // if(question){
-  //   
-  //   b = 0;
-  //   name = Packet.decode_name(buffer, offset / 8);
-  //   do{ b = read(8) }while(b);
-  //   packet.question.push({
-  //     name: name,
-  //     type: read(16),
-  //     class: read(16)
-  //   });
-  // }
-  // 
-  // if(answer){
-  //   b = 0;
-  //   name = Packet.decode_name(buffer, offset / 8);
-  //   do{ b = read(8); }while(b);
-  //   packet.answer.push({
-  //     name: name,
-  //     type: read(16),
-  //     class: read(16)
-  //   })
-  // }
-  
-  return packet;
-};
+  var b = 0, name = '';
 
-/**
- * [decode_name description]
- * @param  {[type]} buffer [description]
- * @param  {[type]} offset [description]
- * @param  {[type]} str    [description]
- * @return {[type]}        [description]
- */
-Packet.decode_name = function(buffer, offset, str){
-  str    = str    || '';
-  offset = offset || 0;
-  var len = buffer.readUInt8(offset);
-  if(len === 0) return str;
-  if(len === 0xc0){
-    offset = buffer.readUInt8(++offset);
-    return Packet.decode_name(buffer, offset);
+  // question section
+  if(question){
+    
+    do{ 
+      b = read(8);
+      if(b){
+        while(b--) name += String.fromCharCode(read(8));  
+        name += '.';
+      }
+    }while(b);
+
+    packet.question.push({
+      name: name,
+      type: read(16),
+      class: read(16)
+    });
+  }
+
+  // answer section
+  if(answer){
+
+    var mv = read(8);
+    var to = read(8);
+
+    var data = {
+      name : name,
+      type : read(16),
+      class: read(16),
+      ttl  : read(32), 
+    };
+      
+    var len = read(16);
+
+    switch(data.type){
+      case _.QUERY_TYPE.A:
+        var address = [];
+        while(len--) address.push(read(8))
+        data.address = address.join('.');
+        packet.answer.push(data);
+        break;
+    }
   }
   
-  while(len--) 
-    str += String.fromCharCode(buffer.readUInt8(++offset));
-  return Packet.decode_name(buffer, ++offset, str + '.');
-}
-
-/**
- * [decode_name2 description]
- * @param  {[type]} buffer [description]
- * @param  {[type]} offset [description]
- * @param  {[type]} str    [description]
- * @return {[type]}        [description]
- */
-Packet.decode_name2 = function(buffer, offset, str){
-  var len, str = '';
-  do{
-    len = buffer.readUInt8(offset++);
-    if(len === 0xc0) {
-      offset = buffer.readUInt8(offset);
-      continue;
-    }
-    if(len){
-      while(len--) 
-        str += String.fromCharCode(buffer.readUInt8(offset++));
-      str += '.';
-    }
-  }while(len);
+  return packet;
 };
 
 /**
@@ -172,20 +161,15 @@ Packet.decode_name2 = function(buffer, offset, str){
  * @return {[type]} [description]
  */
 Packet.prototype.toBuffer = function(){
-  var query = new Buffer([ 0x29 ,0x64 ,0x01 ,0x00 ,0x00 ,0x01 ,0x00 ,0x00 ,0x00 ,0x00 ,0x00 ,0x00 ,0x03 ,0x77 ,0x77 ,0x77 ,0x01 ,0x7a ,0x02 ,0x63 ,0x6e ,0x00 ,0x00 ,0x01 ,0x00 ,0x01 ]);
-  return query;
-};
-
-function encode_name(name){
-  return name.split('.').map(function(part){
-    return [].concat.apply([], [ part.length,
-      part.split('').map(function(c){
-        return c.charCodeAt(0);
-      })
-    ]);
-  }).reduce(function(a, b){
-    return a.concat(b);
-  });
+  var response = new Buffer([ 
+    0x29, 0x64, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 
+    0x00, 0x00, 0x00, 0x00, 0x03, 0x77, 0x77, 0x77, 
+    0x01, 0x7a, 0x02, 0x63, 0x6e, 0x00, 0x00, 0x01, 
+    0x00, 0x01, 0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 
+    0x00, 0x00, 0x01, 0x90, 0x00, 0x04, 0x36, 0xde, 
+    0x3c, 0xfc ]);
+   
+  return response;
 };
 
 module.exports = Packet;

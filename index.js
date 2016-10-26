@@ -1,6 +1,8 @@
+const Packet    = require('./packet');
 const DNSClient = require('./client');
 const DNSServer = require('./server');
 
+exports.Packet = Packet;
 exports.Client = DNSClient;
 exports.Server = DNSServer;
 

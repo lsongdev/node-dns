@@ -8,8 +8,9 @@ const Packet = require('./packet');
 function DNSClient(){
   this.socket = dgram.createSocket('udp4');
   this.socket.on('message', function(message){
+    this.close();
     var response = Packet.parse(message);
-    console.log(response, message);
+    console.log(response);
   });
 }
 
