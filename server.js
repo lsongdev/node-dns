@@ -1,7 +1,7 @@
 const util         = require('util');
 const dgram        = require('dgram');
 const EventEmitter = require('events');
-const Packet       = require('../packet');
+const Packet       = require('./packet');
 /**
  * [DNSServer description]
  * @docs https://tools.ietf.org/html/rfc1034

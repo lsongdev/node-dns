@@ -1,5 +1,5 @@
-const DNSClient = require('./lib/index');
-const DNSServer = require('./lib/server');
+const DNSClient = require('./client');
+const DNSServer = require('./server');
 
 exports.Client = DNSClient;
 exports.Server = DNSServer;

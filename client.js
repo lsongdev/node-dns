@@ -1,11 +1,16 @@
-
+const dgram  = require('dgram');
+const Packet = require('./packet');
 /**
  * [DNSClient description]
  * @docs https://tools.ietf.org/html/rfc1034
  * @docs https://tools.ietf.org/html/rfc1035
  */
 function DNSClient(){
-  
+  this.socket = dgram.createSocket('udp4');
+  this.socket.on('message', function(message){
+    var response = Packet.parse(message);
+    console.log(response, message);
+  });
 }
 
 /**
@@ -14,11 +19,10 @@ function DNSClient(){
  * @return {[type]}         [description]
  */
 DNSClient.prototype.send = function(request){
-  if(!(request instanceof Request))
-    request = new Request(request);
-    
-  //
-  console.log(request);
+  if(!(request instanceof Packet))
+    request = new Packet(request);
+
+  this.socket.send(request.toBuffer(), 53, '8.8.8.8');
   
 };
 
@@ -28,7 +32,7 @@ DNSClient.prototype.send = function(request){
  */
 DNSClient.prototype.lookup =
 DNSClient.prototype.query = function(name, callback){
-  var request = new Request();
+  var request = new Packet();
   return this.send(request);
 };
 
