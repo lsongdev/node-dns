@@ -35,16 +35,17 @@ DNSServer.prototype.createServer = function(){
 };
 
 
-DNSServer.prototype.parse = function(buffer, remote){
+DNSServer.prototype.parse = function(buffer, rinfo){
   var request = Packet.parse(buffer);
-  request.remote = remote;
+  request.remote = rinfo;
   this.emit('request', request);
 };
 
 DNSServer.prototype.send = function(response){
   console.log(response);
-  var remote = response.remote;
-  this.socket.send(response.toBuffer(), remote.port, remote.address);
+  var rinfo = response.remote;
+  var buf = response.toBuffer();
+  this.socket.send(buf, 0, buf.length, rinfo.port, rinfo.address);
 };
 
 /**
