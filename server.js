@@ -4,19 +4,19 @@ const dgram        = require('dgram');
 const EventEmitter = require('events');
 const Packet       = require('./packet');
 /**
- * [DNSServer description]
+ * [Server description]
  * @docs https://tools.ietf.org/html/rfc1034
  * @docs https://tools.ietf.org/html/rfc1035
  */
-function DNSServer(){
+function Server(){
   var self = this;
   this.type = 'udp';
   this.socket = this.createServer();
 };
 
-util.inherits(DNSServer, EventEmitter);
+util.inherits(Server, EventEmitter);
 
-DNSServer.prototype.createServer = function(){
+Server.prototype.createServer = function(){
   var self = this;
   switch(this.type){
     case 'udp':
@@ -34,15 +34,15 @@ DNSServer.prototype.createServer = function(){
   return this.socket;
 };
 
-
-DNSServer.prototype.parse = function(buffer, rinfo){
+Server.prototype.parse = function(buffer, rinfo){
   var request = Packet.parse(buffer);
   request.remote = rinfo;
   this.emit('request', request);
 };
 
-DNSServer.prototype.send = function(response){
+Server.prototype.send = function(response){
   console.log(response);
+  response.header.qr = 1;
   var rinfo = response.remote;
   var buf = response.toBuffer();
   this.socket.send(buf, 0, buf.length, rinfo.port, rinfo.address);
@@ -54,7 +54,7 @@ DNSServer.prototype.send = function(response){
  * @param  {Function} callback [description]
  * @return {[type]}            [description]
  */
-DNSServer.prototype.listen = function(port, callback){
+Server.prototype.listen = function(port, callback){
   switch(this.type){
     case 'udp':
       this.socket.bind(port, callback);
@@ -65,4 +65,4 @@ DNSServer.prototype.listen = function(port, callback){
   }
 };
 
-module.exports = DNSServer;
+module.exports = Server;
