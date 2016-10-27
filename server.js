@@ -43,6 +43,7 @@ DNSServer.prototype.parse = function(buffer, rinfo){
 
 DNSServer.prototype.send = function(response){
   console.log(response);
+  response.header.qr = 1;
   var rinfo = response.remote;
   var buf = response.toBuffer();
   this.socket.send(buf, 0, buf.length, rinfo.port, rinfo.address);

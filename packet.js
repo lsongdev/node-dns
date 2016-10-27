@@ -99,7 +99,9 @@ Packet.prototype.toBuffer = function(){
   
   this.question.forEach(function(question){
     // question name
-    question.name.split('.').map(function(part){
+    question.name.split('.').filter(function(part){
+      return !!part;
+    }).map(function(part){
       
       write(part.length, 8);
       part.split('').map(function(c){

@@ -28,7 +28,7 @@ describe('node-dns', function(){
         ra: 0,
         aa: 0,
         rcode: 0,
-        rd: 0,
+        rd: 1,
         tc: 0,
         z: 0,
       },
