@@ -27,9 +27,9 @@ DNSClient.prototype.send = function(request){
   request.header.id = Math.floor(Math.random() * 1e5);
   request.header.rd = 1;
   var buffer = request.toBuffer();
-  this.socket.send(buffer, 53, '114.114.114.114');
+  // this.socket.send(buffer, 53, '114.114.114.114');
   // this.socket.send(buffer, 53, '8.8.8.8');
-  // this.socket.send(buffer, 53, 'a.root-servers.net');
+  this.socket.send(buffer, 53, 'a.root-servers.net');
   
 };
 
