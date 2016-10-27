@@ -18,7 +18,7 @@ function Packet(data){
     opcode: 0,
     aa: 0,
     tc: 0,
-    rd: 1,
+    rd: 0,
     ra: 0,
     z: 0,
     rcode: 0
@@ -53,13 +53,13 @@ function Packet(data){
 Packet.read = function(buffer, offset, length){
   var a = [], 
       c = Math.ceil(length / 8),
-      l = Math.ceil(offset / 8),
+      l = Math.floor(offset / 8),
       m = offset % 8
   function t(n){  
     var r = [ 0,0,0,0, 0,0,0,0 ];
     for (var i = 7; i >= 0; i--) {
       r[7 - i] = n & Math.pow(2, i) ? 1 : 0;
-    }
+    }    
     a = a.concat(r);
   }
   function p(a){
@@ -74,12 +74,80 @@ Packet.read = function(buffer, offset, length){
 };
 
 /**
+ * [toBuffer description]
+ * @return {[type]} [description]
+ */
+Packet.prototype.toBuffer = function(){
+  var arr = [], self = this;
+  function write(d, size){
+    for(var i=0;i<size;i++)
+      arr.push((d & Math.pow(2, size - i - 1 )) ? 1 : 0);
+  }
+  write(this.header.id    , 16)
+  write(this.header.qr    , 1)
+  write(this.header.opcode, 4)
+  write(this.header.aa    , 1)
+  write(this.header.tc    , 1)
+  write(this.header.rd    , 1)
+  write(this.header.ra    , 1)
+  write(this.header.z     , 3)
+  write(this.header.rcode , 4)
+  write(this.question  .length, 16)
+  write(this.answer    .length, 16)
+  write(this.authority .length, 16)
+  write(this.additional.length, 16)
+  
+  this.question.forEach(function(question){
+    // question name
+    question.name.split('.').map(function(part){
+      
+      write(part.length, 8);
+      part.split('').map(function(c){
+        write(c.charCodeAt(0), 8);
+      });
+            
+    });
+    
+    write(0, 8);
+    write(question.type  , 16);
+    write(question.class , 16);
+    
+  });
+  
+  this.answer.forEach(function(answer){
+    if(answer.name == self.question[0].name){
+      write(0xc0, 8);
+      write(0x0c, 8);
+      write(answer.type  , 16);
+      write(answer.class , 16);
+      write(answer.ttl   , 32);
+      
+      var parts = answer.address.split('.');
+      
+      write(parts.length, 16);
+      parts.forEach(function(part){
+        write(part, 8);
+      });
+      
+    }
+  })
+  
+  var arr2 = [];
+  for(var i=0; i<arr.length; i+=8){
+    var chunk = arr.slice(i, i + 8);
+    arr2.push(parseInt(chunk.join(''), 2));
+  }
+  
+  return new Buffer(arr2);
+};
+
+/**
  * [parse description]
  * @param  {[type]} buffer [description]
  * @return {[type]}        [description]
  */
 Packet.parse = function(buffer){
-
+  
   if(buffer.length < 12){
     throw new Error('parse error');
   }
@@ -92,7 +160,8 @@ Packet.parse = function(buffer){
   };
 
   var packet = new Packet();
-  // header section
+  // Header section
+  // https://tools.ietf.org/html/rfc1035#section-4.1.1
   packet.header.id     = read(16);
   packet.header.qr     = read(1);
   packet.header.opcode = read(4);
@@ -103,73 +172,60 @@ Packet.parse = function(buffer){
   packet.header.z      = read(3);
   packet.header.rcode  = read(4);
 
+  // QDCOUNT
   var question   = read(16);
+  // ANCOUNT
   var answer     = read(16);
+  // NSCOUNT
   var authority  = read(16);
+  // ARCOUNT
   var additional = read(16);
   
   var b = 0, name = '';
 
   // question section
-  if(question){
-    
-    do{ 
-      b = read(8);
-      if(b){
-        while(b--) name += String.fromCharCode(read(8));  
-        name += '.';
-      }
-    }while(b);
-
-    packet.question.push({
-      name: name,
-      type: read(16),
-      class: read(16)
-    });
-  }
-
-  // answer section
-  if(answer){
-
-    var mv = read(8);
-    var to = read(8);
-
-    var data = {
-      name : name,
-      type : read(16),
-      class: read(16),
-      ttl  : read(32), 
-    };
-      
-    var len = read(16);
-
-    switch(data.type){
-      case _.QUERY_TYPE.A:
-        var address = [];
-        while(len--) address.push(read(8))
-        data.address = address.join('.');
-        packet.answer.push(data);
-        break;
-    }
-  }
+  // https://tools.ietf.org/html/rfc1035#section-4.1.2
   
-  return packet;
-};
+  var rr =  [
+    [ 'question'  , question    ],
+    [ 'answer'    , answer      ],
+    [ 'authority' , authority   ],
+    [ 'additional', additional  ]
+  ];
+  
+  rr.forEach(function(x, section_index){
+    var section = x[0], section_count = x[1];
+    while(section_count--){
+      
+      do{ 
+        b = read(8);
+        if(b === 0xc0){
+          read(8);
+          break;
+        }
+        if(b){
+          while(b--) name += String.fromCharCode(read(8));  
+          name += '.';
+        }
+      }while(b);
 
-/**
- * [toBuffer description]
- * @return {[type]} [description]
- */
-Packet.prototype.toBuffer = function(){
-  var response = new Buffer([ 
-    0x29, 0x64, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 
-    0x00, 0x00, 0x00, 0x00, 0x03, 0x77, 0x77, 0x77, 
-    0x01, 0x7a, 0x02, 0x63, 0x6e, 0x00, 0x00, 0x01, 
-    0x00, 0x01, 0xc0, 0x0c, 0x00, 0x01, 0x00, 0x01, 
-    0x00, 0x00, 0x01, 0x90, 0x00, 0x04, 0x36, 0xde, 
-    0x3c, 0xfc ]);
-   
-  return response;
+      var data = {
+        name : name,
+        type : read(16),
+        class: read(16)
+      };
+      
+      if(section_index > 0){
+        data.ttl = read(32);
+        var len = read(16);
+        while(len--) read(8);
+      }
+      
+      packet[ section ].push(data);
+      
+    }
+  });
+  return packet;
 };
 
 module.exports = Packet;

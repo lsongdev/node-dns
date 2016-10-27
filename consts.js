@@ -1,4 +1,9 @@
 
+/**
+ * [QUERY_TYPE description]
+ * @type {Object}
+ * @docs https://tools.ietf.org/html/rfc1035#section-3.2.2
+ */
 exports.QUERY_TYPE = {
   A     : 0x01,
   NS    : 0x02,
@@ -16,16 +21,20 @@ exports.QUERY_TYPE = {
   MINFO : 0x0E,
   MX    : 0x0F,
   TXT   : 0x10,
-  UINFO : 0x64,
-  UID   : 0x65,
-  GID   : 0x66,
-  ANY   : 0xFF
+  AXFR  : 0xFC,
+  MAILB : 0xFD,
+  MAILA : 0xFE,
+  ANY   : 0xFF,
 };
-
+/**
+ * [QUERY_CLASS description]
+ * @type {Object}
+ * @docs https://tools.ietf.org/html/rfc1035#section-3.2.4
+ */
 exports.QUERY_CLASS = {
-  IN    : 0x01,
-  CSNET : 0x02,
-  CHAOS : 0x03,
-  HESIOD: 0x04,
-  ANY   : 0xFF
+  IN : 0x01,
+  CS : 0x02,
+  CH : 0x03,
+  HS : 0x04,
+  ANY: 0xFF
 };
