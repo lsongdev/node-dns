@@ -180,19 +180,14 @@ Packet.parse = function(buffer){
   var authority  = read(16);
   // ARCOUNT
   var additional = read(16);
-  
-  var b = 0, name = '';
 
-  // question section
-  // https://tools.ietf.org/html/rfc1035#section-4.1.2
-  
   var rr =  [
     [ 'question'  , question    ],
     [ 'answer'    , answer      ],
     [ 'authority' , authority   ],
     [ 'additional', additional  ]
   ];
-  
+  var b = 0, name = '';
   rr.forEach(function(x, section_index){
     var section = x[0], section_count = x[1];
     while(section_count--){
@@ -218,7 +213,30 @@ Packet.parse = function(buffer){
       if(section_index > 0){
         data.ttl = read(32);
         var len = read(16);
-        while(len--) read(8);
+        switch (data.type) {
+          case _.QUERY_TYPE.A:
+            var address = [];
+            while(len--) address.push(read(8))
+            data.address = address.join('.');
+            break;
+          case _.QUERY_TYPE.CNAME:
+            data.cname = '';
+            while(len--) data.cname += read(8);
+            break;
+          case _.QUERY_TYPE.NS:
+            data.nsdname = '';
+            while(len--) data.nsdname += read(8);
+            break;
+          case _.QUERY_TYPE.MX:
+            data.preference = read(16);
+            data.exchange = '';
+            len -= 2;
+            while(len--) data.exchange += read(8);
+            break;
+          default:
+            while(len--) read(8);
+            break;
+        }
       }
       
       packet[ section ].push(data);
