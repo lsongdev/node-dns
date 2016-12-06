@@ -12,37 +12,57 @@ const _ = require('./consts');
  *   <-W--W--W-----Z-----C--N>|<----------->|
  */
 function Packet(data){
-  this.header = {
-    id: 0,
-    qr: 0,
-    opcode: 0,
-    aa: 0,
-    tc: 0,
-    rd: 0,
-    ra: 0,
-    z: 0,
-    rcode: 0
-  };
-  this.question = [];
-  this.answer = [];
-  this.authority = [];
-  this.additional = [];
-
-  if(data instanceof Packet){
-    return data;
-  }
+  this.header = new Packet.Header(data);
+  this.questions   = [];
+  this.answers     = [];
+  this.authorities = [];
+  this.additionals = [];
   
   if(data instanceof Buffer){
     data = Packet.parse(data);
   }
-  if(typeof data !== 'undefined'){
-    for(var key in data){
-      this[ key ] = data[key];
-    }
-  }
   
   return this;
 };
+/**
+ * [Writer description]
+ */
+Packet.Writer = function(){
+  this.buffer = [];
+};
+/**
+ * [write description]
+ * @param  {[type]} d    [description]
+ * @param  {[type]} size [description]
+ * @return {[type]}      [description]
+ */
+Packet.Writer.prototype.write = function(d, size){
+  for(var i = 0; i < size; i++)
+    this.buffer.push((d & Math.pow(2, size - i - 1 )) ? 1 : 0);
+};
+/**
+ * [toBuffer description]
+ * @return {[type]} [description]
+ */
+Packet.Writer.prototype.toBuffer = function(){
+  var arr = [];
+  for(var i = 0; i < this.buffer.length; i += 8){
+    var chunk = this.buffer.slice(i, i + 8);
+    arr.push(parseInt(chunk.join(''), 2));
+  }
+  return new Buffer(arr);
+};
+/**
+ * [Reader description]
+ * @param {[type]} buffer [description]
+ * @param {[type]} offset [description]
+ */
+Packet.Reader = function(buffer, offset){
+  this.buffer = buffer;
+  this.offset = offset || 0;
+  return this;
+};
+
 /**
  * [read description]
  * @param  {[type]} buffer [description]
@@ -50,7 +70,7 @@ function Packet(data){
  * @param  {[type]} length [description]
  * @return {[type]}        [description]
  */
-Packet.read = function(buffer, offset, length){
+Packet.Reader.read = function(buffer, offset, length){
   var a = [], 
       c = Math.ceil(length / 8),
       l = Math.floor(offset / 8),
@@ -72,75 +92,159 @@ Packet.read = function(buffer, offset, length){
   while(c--) t(buffer.readUInt8(l++));
   return p(a.slice(m, m + length))
 };
+/**
+ * [read description]
+ * @param  {[type]} size [description]
+ * @return {[type]}      [description]
+ */
+Packet.Reader.prototype.read = function(size){
+  var val = Packet.Reader.read(this.buffer, this.offset, size);
+  this.offset += size;
+  return val;
+};
+
+
+/**
+ * [encode_name description]
+ * @param  {[type]} domain [description]
+ * @return {[type]}        [description]
+ */
+Packet.Name = function(domain){
+  if(!(this instanceof Packet.Name)){
+    return Packet.Name.prototype.toBuffer(domain);
+  }
+  this.domain = domain;
+};
+
+Packet.Name.prototype.toBuffer = function(domain){
+  var arr = [];
+  domain = domain || this.domain;
+  domain.split('.').filter(function(part){
+    return !!part;
+  }).map(function(part){
+    arr = arr.concat.apply(arr, [ part.length, part.split('').map(function(c){
+      return c.charCodeAt(0);
+    }) ]);
+  });
+  return new Buffer(arr);
+};
+/**
+ * [decode_name description]
+ * @param  {[type]} buffer [description]
+ * @param  {[type]} offset [description]
+ * @return {[type]}        [description]
+ */
+Packet.Name.parse = function(buffer, offset){
+  offset = offset || 12;
+  var b = 0, name = [];
+  do{
+    b = buffer[ offset++ ];
+    if(b === 0xc0){ // copy
+      var to = buffer[ offset++ ];
+      return {
+        offset: offset,
+        value : Packet.Name.parse(buffer, to).value
+      };
+    }else{
+      if(b){
+        var part = '';
+        while(b--) part += String.fromCharCode(buffer[ offset++ ]);
+        name.push(part);
+      }
+    }
+  }while(b);
+  return {
+    offset: --offset,
+    value : name.join('.')
+  };
+};
+
+/**
+ * [Header description]
+ * @param {[type]} options [description]
+ */
+Packet.Header = function(options){
+  this.id     = 0;
+  this.qr     = 0;
+  this.opcode = 0;
+  this.aa     = 0;
+  this.tc     = 0;
+  this.rd     = 0;
+  this.ra     = 0;
+  this.z      = 0;
+  this.rcode  = 0;
+  for(var k in options){
+    this[ k ] = options[ k ];
+  }
+  return this;
+};
+
+Packet.Header.prototype.toBuffer = function(){
+  var writer = new Packet.Writer();
+  writer.write(this.id    , 16)
+  writer.write(this.qr    , 1)
+  writer.write(this.opcode, 4)
+  writer.write(this.aa    , 1)
+  writer.write(this.tc    , 1)
+  writer.write(this.rd    , 1)
+  writer.write(this.ra    , 1)
+  writer.write(this.z     , 3)
+  writer.write(this.rcode , 4)
+  return writer.toBuffer();
+};
+/**
+ * [parse description]
+ * @param  {[type]} buffer [description]
+ * @return {[type]}        [description]
+ * @docs https://tools.ietf.org/html/rfc1035#section-4.1.1
+ */
+Packet.Header.parse = function(buffer){
+  var header = new Packet.Header();
+  var reader = new Packet.Reader(buffer);
+  header.id     = reader.read(16);
+  header.qr     = reader.read(1);
+  header.opcode = reader.read(4);
+  header.aa     = reader.read(1);
+  header.tc     = reader.read(1);
+  header.rd     = reader.read(1);
+  header.ra     = reader.read(1);
+  header.z      = reader.read(3);
+  header.rcode  = reader.read(4);
+  return header;
+};
+
+Packet.Question = function(){
+  
+};
 
 /**
  * [toBuffer description]
  * @return {[type]} [description]
  */
 Packet.prototype.toBuffer = function(){
-  var arr = [], self = this;
-  function write(d, size){
-    for(var i=0;i<size;i++)
-      arr.push((d & Math.pow(2, size - i - 1 )) ? 1 : 0);
-  }
-  write(this.header.id    , 16)
-  write(this.header.qr    , 1)
-  write(this.header.opcode, 4)
-  write(this.header.aa    , 1)
-  write(this.header.tc    , 1)
-  write(this.header.rd    , 1)
-  write(this.header.ra    , 1)
-  write(this.header.z     , 3)
-  write(this.header.rcode , 4)
-  write(this.question  .length, 16)
-  write(this.answer    .length, 16)
-  write(this.authority .length, 16)
-  write(this.additional.length, 16)
-  
-  this.question.forEach(function(question){
-    // question name
-    question.name.split('.').filter(function(part){
-      return !!part;
-    }).map(function(part){
-      
-      write(part.length, 8);
-      part.split('').map(function(c){
-        write(c.charCodeAt(0), 8);
-      });
-            
-    });
-    
-    write(0, 8);
-    write(question.type  , 16);
-    write(question.class , 16);
-    
+  var writer = new Packet.Writer();
+  writer.write(this.header.toBuffer());
+  writer.write(this.questions  .length, 16)
+  writer.write(this.answers    .length, 16)
+  writer.write(this.authorities.length, 16)
+  writer.write(this.additionals.length, 16)
+  // questions
+  this.questions.forEach(function(question){
+    writer.write(question.toBuffer());
   });
-  
-  this.answer.forEach(function(answer){
-    if(answer.name == self.question[0].name){
-      write(0xc0, 8);
-      write(0x0c, 8);
-      write(answer.type  , 16);
-      write(answer.class , 16);
-      write(answer.ttl   , 32);
-      
-      var parts = answer.address.split('.');
-      
-      write(parts.length, 16);
-      parts.forEach(function(part){
-        write(part, 8);
-      });
-      
-    }
-  })
-  
-  var arr2 = [];
-  for(var i=0; i<arr.length; i+=8){
-    var chunk = arr.slice(i, i + 8);
-    arr2.push(parseInt(chunk.join(''), 2));
-  }
-  
-  return new Buffer(arr2);
+  // answers
+  this.answers.forEach(function(answer){
+    writer.write(answer.toBuffer());
+  });
+  // authorities
+  this.authorities.forEach(function(authority){
+    writer.write(authority.toBuffer());
+  });
+  // additionals
+  this.additionals.forEach(function(additional){
+    writer.write(additional.toBuffer());
+  });
+  return writer.toBuffer();
 };
 
 /**
@@ -149,100 +253,19 @@ Packet.prototype.toBuffer = function(){
  * @return {[type]}        [description]
  */
 Packet.parse = function(buffer){
-  
-  if(buffer.length < 12){
-    throw new Error('parse error');
-  }
-
-  var offset = 0;
-  var read = function(size){
-    var val = Packet.read(buffer, offset, size);
-    offset += size;
-    return val;
-  };
-
   var packet = new Packet();
-  // Header section
-  // https://tools.ietf.org/html/rfc1035#section-4.1.1
-  packet.header.id     = read(16);
-  packet.header.qr     = read(1);
-  packet.header.opcode = read(4);
-  packet.header.aa     = read(1);
-  packet.header.tc     = read(1);
-  packet.header.rd     = read(1);
-  packet.header.ra     = read(1);
-  packet.header.z      = read(3);
-  packet.header.rcode  = read(4);
-
-  // QDCOUNT
-  var question   = read(16);
-  // ANCOUNT
-  var answer     = read(16);
-  // NSCOUNT
-  var authority  = read(16);
-  // ARCOUNT
-  var additional = read(16);
-
-  var rr =  [
-    [ 'question'  , question    ],
-    [ 'answer'    , answer      ],
-    [ 'authority' , authority   ],
-    [ 'additional', additional  ]
-  ];
-  var b = 0, name = '';
-  rr.forEach(function(x, section_index){
-    var section = x[0], section_count = x[1];
-    while(section_count--){
-      
-      do{ 
-        b = read(8);
-        if(b === 0xc0){
-          read(8);
-          break;
-        }
-        if(b){
-          while(b--) name += String.fromCharCode(read(8));  
-          name += '.';
-        }
-      }while(b);
-
-      var data = {
-        name : name,
-        type : read(16),
-        class: read(16)
-      };
-      
-      if(section_index > 0){
-        data.ttl = read(32);
-        var len = read(16);
-        switch (data.type) {
-          case _.QUERY_TYPE.A:
-            var address = [];
-            while(len--) address.push(read(8))
-            data.address = address.join('.');
-            break;
-          case _.QUERY_TYPE.CNAME:
-            data.cname = '';
-            while(len--) data.cname += read(8);
-            break;
-          case _.QUERY_TYPE.NS:
-            data.nsdname = '';
-            while(len--) data.nsdname += read(8);
-            break;
-          case _.QUERY_TYPE.MX:
-            data.preference = read(16);
-            data.exchange = '';
-            len -= 2;
-            while(len--) data.exchange += read(8);
-            break;
-          default:
-            while(len--) read(8);
-            break;
-        }
-      }
-      
-      packet[ section ].push(data);
-      
+  packet.header = Packet.Header.parse(buffer);
+  ([
+    [ 'questions'   , 'Question'  , read(16) ],
+    [ 'answers'     , 'Answer'    , read(16) ],
+    [ 'authorities' , 'Authority' , read(16) ],
+    [ 'additionals' , 'Additional', read(16) ]
+  ]).forEach(function(def){
+    var section = def[0];
+    var parser  = def[1];
+    var count   = def[2];
+    while(count--){
+      packet[ section ].push( Packet[ parser ].parse(buffer, offset) );
     }
   });
   return packet;
