@@ -47,4 +47,9 @@ describe('DNS Packet', function(){
     assert.equal(header.qr, 1);
   });
   
+  it('Header#parse', function(){
+    var packet = Packet.parse(response);
+    assert.equal(packet.questions[0].name, 'www.z.cn');
+  });
+  
 });
