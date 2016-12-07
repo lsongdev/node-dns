@@ -1,4 +1,3 @@
-const _ = require('./consts');
 /**
  * [Packet description]
  * @param {[type]} data [description]
@@ -24,6 +23,49 @@ function Packet(data){
   
   return this;
 };
+
+
+
+/**
+ * [QUERY_TYPE description]
+ * @type {Object}
+ * @docs https://tools.ietf.org/html/rfc1035#section-3.2.2
+ */
+Packet.TYPE = {
+  A     : 0x01,
+  NS    : 0x02,
+  MD    : 0x03,
+  MF    : 0x04,
+  CNAME : 0x05,
+  SOA   : 0x06,
+  MB    : 0x07,
+  MG    : 0x08,
+  MR    : 0x09,
+  NULL  : 0x0A,
+  WKS   : 0x0B,
+  PTR   : 0x0C,
+  HINFO : 0x0D,
+  MINFO : 0x0E,
+  MX    : 0x0F,
+  TXT   : 0x10,
+  AXFR  : 0xFC,
+  MAILB : 0xFD,
+  MAILA : 0xFE,
+  ANY   : 0xFF,
+};
+/**
+ * [QUERY_CLASS description]
+ * @type {Object}
+ * @docs https://tools.ietf.org/html/rfc1035#section-3.2.4
+ */
+Packet.CLASS = {
+  IN : 0x01,
+  CS : 0x02,
+  CH : 0x03,
+  HS : 0x04,
+  ANY: 0xFF
+};
+
 
 /**
  * [Writer description]
@@ -144,36 +186,31 @@ Packet.Name.prototype.toBuffer = function(domain){
  * @param  {[type]} offset [description]
  * @return {[type]}        [description]
  */
-Packet.Name.parse = function(buffer, offset){
-  offset = offset || 12;
+Packet.Name.parse = function(reader){
   var b = 0, name = [];
   do{
-    b = buffer[ offset++ ];
+    b = reader.read(8);
     if(b === 0xc0){ // copy
-      var to = buffer[ offset++ ];
-      return {
-        offset: offset,
-        value : Packet.Name.parse(buffer, to).value
-      };
+      var jump = 8 * reader.read(8);
+      var reader2 = new Packet.Reader(reader.buffer, jump);
+      return Packet.Name.parse(reader2);
     }else{
       if(b){
         var part = '';
-        while(b--) part += String.fromCharCode(buffer[ offset++ ]);
+        while(b--) part += String.fromCharCode(reader.read(8));
         name.push(part);
       }
     }
   }while(b);
-  return {
-    offset: --offset,
-    value : name.join('.')
-  };
+  return name.join('.');
 };
 
 /**
  * [Header description]
  * @param {[type]} options [description]
+ * @docs https://tools.ietf.org/html/rfc1035#section-4.1.1
  */
-Packet.Header = function(options){
+Packet.Header = function(header){
   this.id     = 0;
   this.qr     = 0;
   this.opcode = 0;
@@ -183,12 +220,15 @@ Packet.Header = function(options){
   this.ra     = 0;
   this.z      = 0;
   this.rcode  = 0;
-  for(var k in options){
-    this[ k ] = options[ k ];
+  for(var k in header){
+    this[ k ] = header[ k ];
   }
   return this;
 };
-
+/**
+ * [toBuffer description]
+ * @return {[type]} [description]
+ */
 Packet.Header.prototype.toBuffer = function(){
   var writer = new Packet.Writer();
   writer.write(this.id    , 16)
@@ -225,24 +265,66 @@ Packet.Header.parse = function(reader){
   return header;
 };
 
-Packet.Question = function(){
-  this.name = '';
-  this.type = 0;
-  this.class= 0;
+/**
+ * Question section format
+ * @docs https://tools.ietf.org/html/rfc1035#section-4.1.2
+ */
+Packet.Question = function(name, type, cls){
+  this.name = name || '';
+  this.type = type || 0;
+  this.class= cls  || 0;
+  return this;
 };
-
+/**
+ * [parse description]
+ * @param  {[type]} reader [description]
+ * @return {[type]}        [description]
+ */
 Packet.Question.parse = function(reader){
   var question = new Packet.Question();
   if(reader instanceof Buffer){
     reader = new Packet.Reader(reader);
   }
-  var name = Packet.Name.parse(reader.buffer);
-  question.name = name.value;
-  reader.offset = name.offset;
+  question.name = Packet.Name.parse(reader);
   question.type = reader.read(16);
   question.class= reader.read(16);
   return question;
 };
+/**
+ * Resource record format
+ * @docs https://tools.ietf.org/html/rfc1035#section-4.1.3
+ */
+Packet.Resource = function(name, type, cls, ttl, len, data){
+  this.name   = name;
+  this.type   = type;
+  this.class  = cls;
+  this.ttl    = ttl;
+  return this;
+};
+
+Packet.Resource.parse = function(reader){
+  var resource = new Packet.Resource();
+  if(reader instanceof Buffer){
+    reader = new Packet.Reader(reader);
+  }
+  resource.name   = Packet.Name.parse(reader);
+  resource.type   = reader.read(16);
+  resource.class  = reader.read(16);
+  resource.ttl    = reader.read(32);
+  var length = reader.read(16);
+  var parser = Object.keys(Packet.TYPE).filter(function(type){
+    return resource.type === Packet.TYPE[ type ];
+  })[0];
+  switch (parser) {
+    case 'A':
+      var parts = [];
+      while(length--) parts.push(reader.read(8));
+      resource.host = parts.join('.');
+      break;
+  }
+  return resource;
+};
+
 
 /**
  * [toBuffer description]
@@ -283,11 +365,11 @@ Packet.parse = function(buffer){
   var packet = new Packet();
   var reader = new Packet.Reader(buffer);
   packet.header = Packet.Header.parse(reader);
-  ([
-    [ 'questions'   , 'Question'  , reader.read(16) ],
-    [ 'answers'     , 'Answer'    , reader.read(16) ],
-    [ 'authorities' , 'Authority' , reader.read(16) ],
-    [ 'additionals' , 'Additional', reader.read(16) ]
+  ([ // props           parser      count
+    [ 'questions'   , 'Question', reader.read(16) ],
+    [ 'answers'     , 'Resource', reader.read(16) ],
+    [ 'authorities' , 'Resource', reader.read(16) ],
+    [ 'additionals' , 'Resource', reader.read(16) ]
   ]).forEach(function(def){
     var section = def[0];
     var parser  = def[1];

@@ -19,13 +19,14 @@ describe('DNS Packet', function(){
   
   it('Name#decode', function(){
     
-    var name = Packet.Name.parse(response);
-    assert.equal(name.offset, 21);
-    assert.equal(name.value, 'www.z.cn');
     
-    var name = Packet.Name.parse(response, 26);
-    assert.equal(name.offset, 28);
-    assert.equal(name.value, 'www.z.cn');
+    var reader = new Packet.Reader(response, 8 * 12);
+    var name = Packet.Name.parse(reader);
+    assert.equal(name, 'www.z.cn');
+    reader.offset = 8 * 26;
+    var name = Packet.Name.parse(reader);
+    assert.equal(reader.offset, 8 * 28);
+    assert.equal(name, 'www.z.cn');
     
   });
   
@@ -43,13 +44,24 @@ describe('DNS Packet', function(){
   
   it('Header#decode', function(){
     var header = Packet.Header.parse(response);
-    assert.equal(header.id, 0x2964);
-    assert.equal(header.qr, 1);
+    assert.equal(header.id    , 0x2964);
+    assert.equal(header.qr    , 1);
+    assert.equal(header.opcode, 0);
+    assert.equal(header.aa    , 0);
+    assert.equal(header.tc    , 0);
+    assert.equal(header.rd    , 1);
+    assert.equal(header.z     , 0);
+    assert.equal(header.rcode , 0);
   });
   
-  it('Header#parse', function(){
+  it('Packet#parse', function(){
     var packet = Packet.parse(response);
-    assert.equal(packet.questions[0].name, 'www.z.cn');
+    assert.equal(packet.questions[0].name , 'www.z.cn');
+    assert.equal(packet.questions[0].type , Packet.TYPE.A);
+    assert.equal(packet.questions[0].class, Packet.CLASS.IN);
+    assert.equal(packet.answers[0].class, Packet.TYPE.A);
+    assert.equal(packet.answers[0].class, Packet.CLASS.IN);
+    assert.equal(packet.answers[0].host, '54.222.60.252');
   });
   
 });
