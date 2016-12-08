@@ -1,11 +1,11 @@
 const assert = require('assert');
 const Packet = require('../packet');
 
-var request = new Buffer([ 
-0x29 ,0x64 ,0x01 ,0x00 ,0x00 ,0x01 ,0x00 ,0x00,
-0x00 ,0x00 ,0x00 ,0x00 ,0x03 ,0x77 ,0x77 ,0x77,
-0x01 ,0x7a ,0x02 ,0x63 ,0x6e ,0x00 ,0x00 ,0x01,
-0x00 ,0x01 ]);
+var request = new Buffer([
+0x29, 0x64, 0x01, 0x00, 0x00, 0x01, 0x00, 0x00,
+0x00, 0x00, 0x00, 0x00, 0x06, 0x67, 0x6f, 0x6f,
+0x67, 0x6c, 0x65, 0x03, 0x63, 0x6f, 0x6d, 0x00,
+0x00, 0x01, 0x00, 01 ]);
 
 var response = new Buffer([ 
 0x29, 0x64, 0x81, 0x80, 0x00, 0x01, 0x00, 0x01, 
@@ -17,9 +17,13 @@ var response = new Buffer([
 
 describe('DNS Packet', function(){
   
+  it('Name#encode', function(){
+    var name = new Packet.Name('www.google.com');
+    var pattern = [ 3,'w','w','w',5,'g','o','o','g','l','e',3,'c','o','m', '0' ];
+    assert.equal(name.toBuffer().length, pattern.length);
+  });
+  
   it('Name#decode', function(){
-    
-    
     var reader = new Packet.Reader(response, 8 * 12);
     var name = Packet.Name.parse(reader);
     assert.equal(name, 'www.z.cn');
@@ -30,19 +34,15 @@ describe('DNS Packet', function(){
     
   });
   
-  it('Name#encode', function(){
-    var name = new Packet.Name('www.google.com');
-    var pattern = [ 3,'w','w','w',5,'g','o','o','g','l','e',3,'c','o','m' ];
-    assert.equal(name.toBuffer().length, pattern.length);
-    
-  });
-  
   it('Header#encode', function(){
-    var header = new Packet.Header({ id: 0x2964 });
-    assert.deepEqual(header.toBuffer(), new Buffer([0x29, 0x64, 0x00,0x00]));
+    var header = new Packet.Header({ id: 0x2964, qr: 1 });
+    header.qdcount = 1;
+    header.ancount = 2;
+    assert.deepEqual(header.toBuffer(), new Buffer([
+      0x29, 0x64, 0x80,0x00, 0x00, 0x01, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00 ]));
   });
   
-  it('Header#decode', function(){
+  it('Header#parse', function(){
     var header = Packet.Header.parse(response);
     assert.equal(header.id    , 0x2964);
     assert.equal(header.qr    , 1);
@@ -52,8 +52,12 @@ describe('DNS Packet', function(){
     assert.equal(header.rd    , 1);
     assert.equal(header.z     , 0);
     assert.equal(header.rcode , 0);
+    assert.equal(header.qdcount, 1);
+    assert.equal(header.ancount, 1);
+    assert.equal(header.nscount, 0);
+    assert.equal(header.arcount, 0);
   });
-  
+  // 
   it('Packet#parse', function(){
     var packet = Packet.parse(response);
     assert.equal(packet.questions[0].name , 'www.z.cn');
@@ -62,6 +66,48 @@ describe('DNS Packet', function(){
     assert.equal(packet.answers[0].class, Packet.TYPE.A);
     assert.equal(packet.answers[0].class, Packet.CLASS.IN);
     assert.equal(packet.answers[0].host, '54.222.60.252');
+  });
+  // 
+  it('Packet#encode', function(){
+    
+    var packet = new Packet({
+      id: 10596,
+      qr: 0,
+      rd: 1
+    });
+    packet.questions.push({
+      name: 'google.com', 
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN
+    });
+    assert.deepEqual(packet.toBuffer(), request);
+    
+  });
+  
+  it('Packet#encode', function(){
+    
+    var packet = new Packet({
+      id: 10596,
+      qr: 1,
+      rd: 1,
+      ra: 1
+    });
+    
+    packet.questions.push({
+      name: 'www.z.cn',
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN
+    });
+    
+    packet.answers.push({
+      name: 'www.z.cn',
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 400
+    });
+    
+    // assert.deepEqual(packet.toBuffer(), response);
+    
   });
   
 });

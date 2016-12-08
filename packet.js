@@ -11,16 +11,11 @@
  *   <-W--W--W-----Z-----C--N>|<----------->|
  */
 function Packet(data){
-  this.header = new Packet.Header(data);
+  this.header      = data || {};
   this.questions   = [];
   this.answers     = [];
   this.authorities = [];
   this.additionals = [];
-  
-  if(data instanceof Buffer){
-    data = Packet.parse(data);
-  }
-  
   return this;
 };
 
@@ -64,6 +59,78 @@ Packet.CLASS = {
   CH : 0x03,
   HS : 0x04,
   ANY: 0xFF
+};
+
+
+/**
+ * [parse description]
+ * @param  {[type]} buffer [description]
+ * @return {[type]}        [description]
+ */
+Packet.parse = function(buffer){
+  var packet = new Packet();
+  var reader = new Packet.Reader(buffer);
+  packet.header = Packet.Header.parse(reader);
+  ([ // props           parser      count
+    [ 'questions'   , 'Question', packet.header.qdcount ],
+    [ 'answers'     , 'Resource', packet.header.ancount ],
+    [ 'authorities' , 'Resource', packet.header.nscount ],
+    [ 'additionals' , 'Resource', packet.header.arcount ]
+  ]).forEach(function(def){
+    var section = def[0];
+    var parser  = def[1];
+    var count   = def[2];
+    if(parser in Packet){
+      while(count--){
+        packet[ section ] = packet[ section ] || [];
+        packet[ section ].push( Packet[ parser ].parse(reader) );
+      }
+    }else{
+      console.error('unknow parser: ' + parser );
+    }
+  });
+  return packet;
+};
+
+
+
+/**
+ * [toBuffer description]
+ * @return {[type]} [description]
+ */
+Packet.prototype.toBuffer = function(){
+  var writer = new Packet.Writer();
+  this.header.qdcount = this.questions.length;
+  this.header.ancount = this.answers.length;
+  this.header.nscount = this.authorities.length;
+  this.header.arcount = this.additionals.length;
+  if(!(this.header instanceof Packet.Header)){
+    this.header = new Packet.Header(this.header);
+  }
+  this.header.toBuffer(writer);
+  // questions
+  this.questions.forEach(function(question){
+    if(!(question instanceof Packet.Question)){
+      question = new Packet.Question(question);
+    }
+    question.toBuffer(writer);
+  });
+  // // answers
+  this.answers.forEach(function(answer){
+    if(!(answer instanceof Packet.Resource)){
+      answer = new Packet.Resource(answer);
+    }
+    answer.toBuffer(writer);
+  });
+  // // authorities
+  // this.authorities.forEach(function(authority){
+  //   writer.write(authority.toBuffer());
+  // });
+  // // additionals
+  // this.additionals.forEach(function(additional){
+  //   writer.write(additional.toBuffer());
+  // });
+  return writer.toBuffer();
 };
 
 
@@ -163,30 +230,15 @@ Packet.Name = function(domain){
 };
 
 /**
- * [toBuffer description]
- * @param  {[type]} domain [description]
- * @return {[type]}        [description]
- */
-Packet.Name.prototype.toBuffer = function(domain){
-  var arr = [];
-  domain = domain || this.domain;
-  domain.split('.').filter(function(part){
-    return !!part;
-  }).map(function(part){
-    arr = arr.concat.apply(arr, [ part.length, part.split('').map(function(c){
-      return c.charCodeAt(0);
-    }) ]);
-  });
-  return new Buffer(arr);
-};
-
-/**
  * [decode_name description]
  * @param  {[type]} buffer [description]
  * @param  {[type]} offset [description]
  * @return {[type]}        [description]
  */
 Packet.Name.parse = function(reader){
+  if(reader instanceof Buffer){
+    reader = new Packet.Reader(reader);
+  }
   var b = 0, name = [];
   do{
     b = reader.read(8);
@@ -206,41 +258,47 @@ Packet.Name.parse = function(reader){
 };
 
 /**
+ * [toBuffer description]
+ * @param  {[type]} domain [description]
+ * @return {[type]}        [description]
+ */
+Packet.Name.prototype.toBuffer = function(writer){
+  writer = writer || new Packet.Writer();
+  this.domain.split('.').filter(function(part){
+    return !!part;
+  }).map(function(part){
+    writer.write(part.length, 8);
+    part.split('').map(function(c){
+      writer.write(c.charCodeAt(0), 8);
+      return c.charCodeAt(0)
+    });
+  });
+  writer.write(0, 8);
+  return writer.toBuffer();
+};
+
+/**
  * [Header description]
  * @param {[type]} options [description]
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.1
  */
 Packet.Header = function(header){
-  this.id     = 0;
-  this.qr     = 0;
-  this.opcode = 0;
-  this.aa     = 0;
-  this.tc     = 0;
-  this.rd     = 0;
-  this.ra     = 0;
-  this.z      = 0;
-  this.rcode  = 0;
+  this.id      = 0;
+  this.qr      = 0;
+  this.opcode  = 0;
+  this.aa      = 0;
+  this.tc      = 0;
+  this.rd      = 0;
+  this.ra      = 0;
+  this.z       = 0;
+  this.rcode   = 0;
+  this.qdcount = 0;
+  this.nscount = 0;
+  this.arcount = 0;
   for(var k in header){
     this[ k ] = header[ k ];
   }
   return this;
-};
-/**
- * [toBuffer description]
- * @return {[type]} [description]
- */
-Packet.Header.prototype.toBuffer = function(){
-  var writer = new Packet.Writer();
-  writer.write(this.id    , 16)
-  writer.write(this.qr    , 1)
-  writer.write(this.opcode, 4)
-  writer.write(this.aa    , 1)
-  writer.write(this.tc    , 1)
-  writer.write(this.rd    , 1)
-  writer.write(this.ra    , 1)
-  writer.write(this.z     , 3)
-  writer.write(this.rcode , 4)
-  return writer.toBuffer();
 };
 /**
  * [parse description]
@@ -253,16 +311,42 @@ Packet.Header.parse = function(reader){
   if(reader instanceof Buffer){
     reader = new Packet.Reader(reader);
   }
-  header.id     = reader.read(16);
-  header.qr     = reader.read(1);
-  header.opcode = reader.read(4);
-  header.aa     = reader.read(1);
-  header.tc     = reader.read(1);
-  header.rd     = reader.read(1);
-  header.ra     = reader.read(1);
-  header.z      = reader.read(3);
-  header.rcode  = reader.read(4);
+  header.id      = reader.read(16);
+  header.qr      = reader.read(1);
+  header.opcode  = reader.read(4);
+  header.aa      = reader.read(1);
+  header.tc      = reader.read(1);
+  header.rd      = reader.read(1);
+  header.ra      = reader.read(1);
+  header.z       = reader.read(3);
+  header.rcode   = reader.read(4);
+  header.qdcount = reader.read(16);
+  header.ancount = reader.read(16);
+  header.nscount = reader.read(16);
+  header.arcount = reader.read(16);
   return header;
+};
+
+/**
+ * [toBuffer description]
+ * @return {[type]} [description]
+ */
+Packet.Header.prototype.toBuffer = function(writer){
+  writer = writer || new Packet.Writer();
+  writer.write(this.id     , 16)
+  writer.write(this.qr     , 1)
+  writer.write(this.opcode , 4)
+  writer.write(this.aa     , 1)
+  writer.write(this.tc     , 1)
+  writer.write(this.rd     , 1)
+  writer.write(this.ra     , 1)
+  writer.write(this.z      , 3)
+  writer.write(this.rcode  , 4)
+  writer.write(this.qdcount, 16)
+  writer.write(this.ancount, 16)
+  writer.write(this.nscount, 16)
+  writer.write(this.arcount, 16)
+  return writer.toBuffer();
 };
 
 /**
@@ -270,9 +354,14 @@ Packet.Header.parse = function(reader){
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.2
  */
 Packet.Question = function(name, type, cls){
-  this.name = name || '';
-  this.type = type || 0;
-  this.class= cls  || 0;
+  if(typeof name === 'object'){
+    type = name.type;
+    cls  = name.class;
+    name = name.name;
+  }
+  this.name  = name || '';
+  this.type  = type || 0;
+  this.class = cls  || 0;
   return this;
 };
 /**
@@ -290,11 +379,26 @@ Packet.Question.parse = function(reader){
   question.class= reader.read(16);
   return question;
 };
+
+Packet.Question.prototype.toBuffer = function(writer){
+  writer = writer || new Packet.Writer();
+  new Packet.Name(this.name).toBuffer(writer);
+  writer.write(this.type,  16);
+  writer.write(this.class, 16);
+  return writer.toBuffer();
+};
 /**
  * Resource record format
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.3
  */
-Packet.Resource = function(name, type, cls, ttl, len, data){
+Packet.Resource = function(name, type, cls, ttl, data){
+  if(typeof name === 'object'){
+    type = name.type;
+    cls  = name.class;
+    ttl  = name.ttl;
+    data = name.data;
+    name = name.name;
+  }
   this.name   = name;
   this.type   = type;
   this.class  = cls;
@@ -325,65 +429,13 @@ Packet.Resource.parse = function(reader){
   return resource;
 };
 
-
-/**
- * [toBuffer description]
- * @return {[type]} [description]
- */
-Packet.prototype.toBuffer = function(){
-  var writer = new Packet.Writer();
-  writer.write(this.header.toBuffer());
-  writer.write(this.questions  .length, 16)
-  writer.write(this.answers    .length, 16)
-  writer.write(this.authorities.length, 16)
-  writer.write(this.additionals.length, 16)
-  // questions
-  this.questions.forEach(function(question){
-    writer.write(question.toBuffer());
-  });
-  // answers
-  this.answers.forEach(function(answer){
-    writer.write(answer.toBuffer());
-  });
-  // authorities
-  this.authorities.forEach(function(authority){
-    writer.write(authority.toBuffer());
-  });
-  // additionals
-  this.additionals.forEach(function(additional){
-    writer.write(additional.toBuffer());
-  });
+Packet.Resource.prototype.toBuffer = function(writer){
+  writer = writer || new Packet.Writer();
+  new Packet.Name(this.name).toBuffer(writer);
+  writer.write(this.type,  16);
+  writer.write(this.class, 16);
+  writer.write(this.ttl, 16);
   return writer.toBuffer();
-};
-
-/**
- * [parse description]
- * @param  {[type]} buffer [description]
- * @return {[type]}        [description]
- */
-Packet.parse = function(buffer){
-  var packet = new Packet();
-  var reader = new Packet.Reader(buffer);
-  packet.header = Packet.Header.parse(reader);
-  ([ // props           parser      count
-    [ 'questions'   , 'Question', reader.read(16) ],
-    [ 'answers'     , 'Resource', reader.read(16) ],
-    [ 'authorities' , 'Resource', reader.read(16) ],
-    [ 'additionals' , 'Resource', reader.read(16) ]
-  ]).forEach(function(def){
-    var section = def[0];
-    var parser  = def[1];
-    var count   = def[2];
-    if(parser in Packet){
-      while(count--){
-        packet[ section ] = packet[ section ] || [];
-        packet[ section ].push( Packet[ parser ].parse(reader) );
-      }
-    }else{
-      console.error('unknow parser: ' + parser );
-    }
-  });
-  return packet;
 };
 
 module.exports = Packet;
