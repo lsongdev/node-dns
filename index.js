@@ -1,17 +1,25 @@
 const udp    = require('dgram');
 const Packet = require('./packet');
-const _      = require('./consts');
 /**
  * [DNS description]
  * @docs https://tools.ietf.org/html/rfc1034
  * @docs https://tools.ietf.org/html/rfc1035
  */
-function DNS(){
+function DNS(options){
   var self = this;
+  var defaults = {
+    port: 53,
+    servers: '8.8.8.8'
+  };
+  for(var k in options){
+    defaults[ k ] = options[k];
+  }
+  this.map = {};
+  this.options = defaults;
   this.socket = udp.createSocket('udp4');
   this.socket.on('message', function(message){
     var response = Packet.parse(message);
-    console.log(response);
+    self.map[ response.id ](null, response);
     this.close();
   });
 }
@@ -21,44 +29,24 @@ function DNS(){
  * @param  {[type]} request [description]
  * @return {[type]}         [description]
  */
-DNS.prototype.send = function(request){
-  if(!(request instanceof Packet))
-    request = new Packet(request);
-  request.header.id = Math.floor(Math.random() * 1e5);
-  request.header.rd = 1;
-  var buffer = request.toBuffer();
-  // this.socket.send(buffer, 53, '114.114.114.114');
-  // this.socket.send(buffer, 53, '8.8.8.8');
-  this.socket.send(buffer, 53, 'a.root-servers.net');
-  
+DNS.prototype.lookup = function(domain, callback){
+  var request = new Packet({
+    id: Math.floor(Math.random() * 1e5)
+  });
+  this.map[ request.id ] = callback;
+  request.questions.push({
+    name: domain,
+    type: Packet.TYPE.ANY
+  });
+  this.socket.send(request.toBuffer(), this.options.port, this.options.servers);
 };
 
-/**
- * [lookup description]
- * @type {[type]}
- */
-DNS.prototype.lookup =
-DNS.prototype.query = function(question, callback){
-  var request = new Packet();
-  if(typeof question === 'string'){    
-    question = {
-      name : question,
-      type : _.QUERY_TYPE.ANY,
-      class: _.QUERY_CLASS.IN
-    };
-  }
-  if(question instanceof Packet){
-    request = question;
-  }else if(typeof question == 'object'){
-    request.question.push(question);
-  }
-  return this.send(request);
-};
 
 /**
  * [Server description]
  * @type {[type]}
  */
+DNS.Packet = Packet;
 DNS.Server = require('./server');
 DNS.createServer = function(options){
   return new DNS.Server(options);

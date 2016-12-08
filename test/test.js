@@ -57,6 +57,20 @@ describe('DNS Packet', function(){
     assert.equal(header.nscount, 0);
     assert.equal(header.arcount, 0);
   });
+  
+  it('Question#encode', function(){
+    
+    var question = new Packet.Question({
+      name: 'google.com',
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN
+    });
+    
+    assert.deepEqual(question.toBuffer(), new Buffer([
+      0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 
+      0x63, 0x6f, 0x6d, 0x00, 0x00, 0x01, 0x00, 0x01
+    ]));
+  });
   // 
   it('Packet#parse', function(){
     var packet = Packet.parse(response);
@@ -103,10 +117,11 @@ describe('DNS Packet', function(){
       name: 'www.z.cn',
       type: Packet.TYPE.A,
       class: Packet.CLASS.IN,
-      ttl: 400
+      ttl: 400,
+      host: '192.168.1.1'
     });
     
-    // assert.deepEqual(packet.toBuffer(), response);
+    assert.deepEqual(Packet.parse(packet.toBuffer()), packet);
     
   });
   

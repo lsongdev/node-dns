@@ -133,38 +133,6 @@ Packet.prototype.toBuffer = function(){
   return writer.toBuffer();
 };
 
-
-/**
- * [Writer description]
- */
-Packet.Writer = function(){
-  this.buffer = [];
-};
-
-/**
- * [write description]
- * @param  {[type]} d    [description]
- * @param  {[type]} size [description]
- * @return {[type]}      [description]
- */
-Packet.Writer.prototype.write = function(d, size){
-  for(var i = 0; i < size; i++)
-    this.buffer.push((d & Math.pow(2, size - i - 1 )) ? 1 : 0);
-};
-
-/**
- * [toBuffer description]
- * @return {[type]} [description]
- */
-Packet.Writer.prototype.toBuffer = function(){
-  var arr = [];
-  for(var i = 0; i < this.buffer.length; i += 8){
-    var chunk = this.buffer.slice(i, i + 8);
-    arr.push(parseInt(chunk.join(''), 2));
-  }
-  return new Buffer(arr);
-};
-
 /**
  * [Reader description]
  * @param {[type]} buffer [description]
@@ -217,6 +185,38 @@ Packet.Reader.prototype.read = function(size){
   return val;
 };
 
+
+/**
+ * [Writer description]
+ */
+Packet.Writer = function(){
+  this.buffer = [];
+};
+
+/**
+ * [write description]
+ * @param  {[type]} d    [description]
+ * @param  {[type]} size [description]
+ * @return {[type]}      [description]
+ */
+Packet.Writer.prototype.write = function(d, size){
+  for(var i = 0; i < size; i++)
+    this.buffer.push((d & Math.pow(2, size - i - 1 )) ? 1 : 0);
+};
+
+/**
+ * [toBuffer description]
+ * @return {[type]} [description]
+ */
+Packet.Writer.prototype.toBuffer = function(){
+  var arr = [];
+  for(var i = 0; i < this.buffer.length; i += 8){
+    var chunk = this.buffer.slice(i, i + 8);
+    arr.push(parseInt(chunk.join(''), 2));
+  }
+  return new Buffer(arr);
+};
+
 /**
  * [encode_name description]
  * @param  {[type]} domain [description]
@@ -264,6 +264,15 @@ Packet.Name.parse = function(reader){
  */
 Packet.Name.prototype.toBuffer = function(writer){
   writer = writer || new Packet.Writer();
+  // var buffer = writer.toBuffer();
+  // if(buffer.length > 12){
+  //   var r = new Packet.Reader(buffer, 12 * 8)
+  //   var n = Packet.Name.parse(r);
+  //   if(n === this.name){
+  //     writer.write(0xc0, 8);
+  //     writer.write(12, 8);
+  //   }
+  // }
   this.domain.split('.').filter(function(part){
     return !!part;
   }).map(function(part){
@@ -391,18 +400,17 @@ Packet.Question.prototype.toBuffer = function(writer){
  * Resource record format
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.3
  */
-Packet.Resource = function(name, type, cls, ttl, data){
+Packet.Resource = function(name, type, cls, ttl){
   if(typeof name === 'object'){
-    type = name.type;
-    cls  = name.class;
-    ttl  = name.ttl;
-    data = name.data;
-    name = name.name;
+    for(var k in name){
+      this[ k ] = name[ k ];
+    }
+  }else{
+    this.name   = name;
+    this.type   = type;
+    this.class  = cls;
+    this.ttl    = ttl;
   }
-  this.name   = name;
-  this.type   = type;
-  this.class  = cls;
-  this.ttl    = ttl;
   return this;
 };
 
@@ -415,15 +423,18 @@ Packet.Resource.parse = function(reader){
   resource.type   = reader.read(16);
   resource.class  = reader.read(16);
   resource.ttl    = reader.read(32);
-  var length = reader.read(16);
+  var length      = reader.read(16);
   var parser = Object.keys(Packet.TYPE).filter(function(type){
     return resource.type === Packet.TYPE[ type ];
   })[0];
-  switch (parser) {
-    case 'A':
+  switch (resource.type) {
+    case Packet.TYPE.A:
       var parts = [];
       while(length--) parts.push(reader.read(8));
       resource.host = parts.join('.');
+      break;
+    default:
+      console.error('parse unknow resource.type', resource.type);
       break;
   }
   return resource;
@@ -434,7 +445,19 @@ Packet.Resource.prototype.toBuffer = function(writer){
   new Packet.Name(this.name).toBuffer(writer);
   writer.write(this.type,  16);
   writer.write(this.class, 16);
-  writer.write(this.ttl, 16);
+  writer.write(this.ttl,   32);
+  switch (this.type) {
+    case Packet.TYPE.A:
+      var parts = this.host.split('.')
+      writer.write(parts.length, 16);
+      parts.forEach(function(part){
+        writer.write(parseInt(part, 10), 8);
+      });
+      break;
+    default:
+      console.error('toBuffer unknow resource.type', resource.type);
+      break;
+  }
   return writer.toBuffer();
 };
 

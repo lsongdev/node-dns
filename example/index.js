@@ -1,6 +1,11 @@
 const assert = require('assert')
-const dns = require('../');
+const DNS = require('../');
 
-dns.lookup('com', function(err, res){
+var dns = new DNS({
+  // servers: '114.114.114.114'
+});
+
+
+dns.lookup('google.com', function(err, res){
   console.log(res);
 });
