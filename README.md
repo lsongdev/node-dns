@@ -15,10 +15,20 @@ $ npm install dns2 --save
 
 
 ```js
-const dns = require('dns2');
+const DNS = require('dns2');
 
-dns.query('lsong.org', function(err, res){
-  console.log(res);
+var dns = new DNS();
+
+var packet = new DNS.Packet();
+
+packet.questions.push({
+  name : 'lsong.org',
+  type : DNS.Packet.TYPE.ANY,
+  class: DNS.Packet.CLASS.IN
+});
+
+dns.send(packet, function(err, res){
+  console.log(err, res);
 });
 
 ```
