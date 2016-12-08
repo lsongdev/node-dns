@@ -1,3 +1,5 @@
+const BufferReader = require('./lib/reader');
+const BufferWriter = require('./lib/writer');
 /**
  * [Packet description]
  * @param {[type]} data [description]
@@ -18,8 +20,6 @@ function Packet(data){
   this.additionals = [];
   return this;
 };
-
-
 
 /**
  * [QUERY_TYPE description]
@@ -43,6 +43,8 @@ Packet.TYPE = {
   MINFO : 0x0E,
   MX    : 0x0F,
   TXT   : 0x10,
+  AAAA  : 0x1C,
+  SPF   : 0x63,
   AXFR  : 0xFC,
   MAILB : 0xFD,
   MAILA : 0xFE,
@@ -71,218 +73,50 @@ Packet.parse = function(buffer){
   var packet = new Packet();
   var reader = new Packet.Reader(buffer);
   packet.header = Packet.Header.parse(reader);
-  ([ // props           parser      count
-    [ 'questions'   , 'Question', packet.header.qdcount ],
-    [ 'answers'     , 'Resource', packet.header.ancount ],
-    [ 'authorities' , 'Resource', packet.header.nscount ],
-    [ 'additionals' , 'Resource', packet.header.arcount ]
+  ([ // props             parser              count
+    [ 'questions'   , Packet.Question, packet.header.qdcount ],
+    [ 'answers'     , Packet.Resource, packet.header.ancount ],
+    [ 'authorities' , Packet.Resource, packet.header.nscount ],
+    [ 'additionals' , Packet.Resource, packet.header.arcount ]
   ]).forEach(function(def){
     var section = def[0];
-    var parser  = def[1];
+    var decoder = def[1];
     var count   = def[2];
-    if(parser in Packet){
-      while(count--){
-        packet[ section ] = packet[ section ] || [];
-        packet[ section ].push( Packet[ parser ].parse(reader) );
-      }
-    }else{
-      console.error('unknow parser: ' + parser );
+    while(count--){
+      packet[ section ] = packet[ section ] || [];
+      packet[ section ].push( decoder.parse(reader) );
     }
   });
   return packet;
 };
 
-
-
 /**
  * [toBuffer description]
  * @return {[type]} [description]
  */
-Packet.prototype.toBuffer = function(){
-  var writer = new Packet.Writer();
+Packet.prototype.toBuffer = function(writer){
+  writer = writer || new Packet.Writer();
   this.header.qdcount = this.questions.length;
   this.header.ancount = this.answers.length;
   this.header.nscount = this.authorities.length;
   this.header.arcount = this.additionals.length;
-  if(!(this.header instanceof Packet.Header)){
+  if(!(this instanceof Packet.Header))
     this.header = new Packet.Header(this.header);
-  }
   this.header.toBuffer(writer);
-  // questions
-  this.questions.forEach(function(question){
-    if(!(question instanceof Packet.Question)){
-      question = new Packet.Question(question);
-    }
-    question.toBuffer(writer);
-  });
-  // // answers
-  this.answers.forEach(function(answer){
-    if(!(answer instanceof Packet.Resource)){
-      answer = new Packet.Resource(answer);
-    }
-    answer.toBuffer(writer);
-  });
-  // // authorities
-  // this.authorities.forEach(function(authority){
-  //   writer.write(authority.toBuffer());
-  // });
-  // // additionals
-  // this.additionals.forEach(function(additional){
-  //   writer.write(additional.toBuffer());
-  // });
-  return writer.toBuffer();
-};
-
-/**
- * [Reader description]
- * @param {[type]} buffer [description]
- * @param {[type]} offset [description]
- */
-Packet.Reader = function(buffer, offset){
-  this.buffer = buffer;
-  this.offset = offset || 0;
-  return this;
-};
-
-/**
- * [read description]
- * @param  {[type]} buffer [description]
- * @param  {[type]} offset [description]
- * @param  {[type]} length [description]
- * @return {[type]}        [description]
- */
-Packet.Reader.read = function(buffer, offset, length){
-  var a = [], 
-      c = Math.ceil(length / 8),
-      l = Math.floor(offset / 8),
-      m = offset % 8
-  function t(n){  
-    var r = [ 0,0,0,0, 0,0,0,0 ];
-    for (var i = 7; i >= 0; i--) {
-      r[7 - i] = n & Math.pow(2, i) ? 1 : 0;
-    }    
-    a = a.concat(r);
-  }
-  function p(a){
-    var n = 0;
-    var f = a.length - 1;
-    for(var i = f;i >= 0;i--)
-      if(a[ f - i ]) n += Math.pow(2, i);
-    return n;
-  }
-  while(c--) t(buffer.readUInt8(l++));
-  return p(a.slice(m, m + length))
-};
-
-/**
- * [read description]
- * @param  {[type]} size [description]
- * @return {[type]}      [description]
- */
-Packet.Reader.prototype.read = function(size){
-  var val = Packet.Reader.read(this.buffer, this.offset, size);
-  this.offset += size;
-  return val;
-};
-
-
-/**
- * [Writer description]
- */
-Packet.Writer = function(){
-  this.buffer = [];
-};
-
-/**
- * [write description]
- * @param  {[type]} d    [description]
- * @param  {[type]} size [description]
- * @return {[type]}      [description]
- */
-Packet.Writer.prototype.write = function(d, size){
-  for(var i = 0; i < size; i++)
-    this.buffer.push((d & Math.pow(2, size - i - 1 )) ? 1 : 0);
-};
-
-/**
- * [toBuffer description]
- * @return {[type]} [description]
- */
-Packet.Writer.prototype.toBuffer = function(){
-  var arr = [];
-  for(var i = 0; i < this.buffer.length; i += 8){
-    var chunk = this.buffer.slice(i, i + 8);
-    arr.push(parseInt(chunk.join(''), 2));
-  }
-  return new Buffer(arr);
-};
-
-/**
- * [encode_name description]
- * @param  {[type]} domain [description]
- * @return {[type]}        [description]
- */
-Packet.Name = function(domain){
-  if(!(this instanceof Packet.Name)){
-    return Packet.Name.prototype.toBuffer(domain);
-  }
-  this.domain = domain;
-};
-
-/**
- * [decode_name description]
- * @param  {[type]} buffer [description]
- * @param  {[type]} offset [description]
- * @return {[type]}        [description]
- */
-Packet.Name.parse = function(reader){
-  if(reader instanceof Buffer){
-    reader = new Packet.Reader(reader);
-  }
-  var b = 0, name = [];
-  do{
-    b = reader.read(8);
-    if(b === 0xc0){ // copy
-      var jump = 8 * reader.read(8);
-      var reader2 = new Packet.Reader(reader.buffer, jump);
-      return Packet.Name.parse(reader2);
-    }else{
-      if(b){
-        var part = '';
-        while(b--) part += String.fromCharCode(reader.read(8));
-        name.push(part);
-      }
-    }
-  }while(b);
-  return name.join('.');
-};
-
-/**
- * [toBuffer description]
- * @param  {[type]} domain [description]
- * @return {[type]}        [description]
- */
-Packet.Name.prototype.toBuffer = function(writer){
-  writer = writer || new Packet.Writer();
-  // var buffer = writer.toBuffer();
-  // if(buffer.length > 12){
-  //   var r = new Packet.Reader(buffer, 12 * 8)
-  //   var n = Packet.Name.parse(r);
-  //   if(n === this.name){
-  //     writer.write(0xc0, 8);
-  //     writer.write(12, 8);
-  //   }
-  // }
-  this.domain.split('.').filter(function(part){
-    return !!part;
-  }).map(function(part){
-    writer.write(part.length, 8);
-    part.split('').map(function(c){
-      writer.write(c.charCodeAt(0), 8);
-      return c.charCodeAt(0)
+  ;([ // section          encoder
+    [ 'questions'  , Packet.Question ],
+    [ 'answers'    , Packet.Resource ],
+    [ 'authorities', Packet.Resource ],
+    [ 'additionals', Packet.Resource ],
+  ]).forEach(function(def){
+    var section   = def[0];
+    var Encoder   = def[1];
+    (this[ section ] || []).map(function(resource){
+      if(!(resource instanceof Encoder))
+        resource = new Encoder(resource);
+      resource.toBuffer(writer);
     });
-  });
-  writer.write(0, 8);
+  }.bind(this));
   return writer.toBuffer();
 };
 
@@ -364,13 +198,13 @@ Packet.Header.prototype.toBuffer = function(writer){
  */
 Packet.Question = function(name, type, cls){
   if(typeof name === 'object'){
-    type = name.type;
-    cls  = name.class;
-    name = name.name;
+    for(var k in name)
+      this[ k ] = name[k];
+  }else{
+    this.name = name;
+    this.type = type;
+    this.class = cls;
   }
-  this.name  = name || '';
-  this.type  = type || 0;
-  this.class = cls  || 0;
   return this;
 };
 /**
@@ -383,7 +217,7 @@ Packet.Question.parse = function(reader){
   if(reader instanceof Buffer){
     reader = new Packet.Reader(reader);
   }
-  question.name = Packet.Name.parse(reader);
+  question.name = Packet.Name.decode(reader);
   question.type = reader.read(16);
   question.class= reader.read(16);
   return question;
@@ -391,7 +225,7 @@ Packet.Question.parse = function(reader){
 
 Packet.Question.prototype.toBuffer = function(writer){
   writer = writer || new Packet.Writer();
-  new Packet.Name(this.name).toBuffer(writer);
+  Packet.Name.encode(this.name, writer);
   writer.write(this.type,  16);
   writer.write(this.class, 16);
   return writer.toBuffer();
@@ -402,63 +236,175 @@ Packet.Question.prototype.toBuffer = function(writer){
  */
 Packet.Resource = function(name, type, cls, ttl){
   if(typeof name === 'object'){
-    for(var k in name){
-      this[ k ] = name[ k ];
-    }
+    for(var k in name)
+      this[ k ] = name[k];
   }else{
-    this.name   = name;
-    this.type   = type;
-    this.class  = cls;
-    this.ttl    = ttl;
+    this.name  = name;
+    this.type  = type;
+    this.class = cls;
+    this.ttl   = ttl;
   }
   return this;
 };
-
+/**
+ * [parse description]
+ * @param  {[type]} reader [description]
+ * @return {[type]}        [description]
+ */
 Packet.Resource.parse = function(reader){
-  var resource = new Packet.Resource();
   if(reader instanceof Buffer){
     reader = new Packet.Reader(reader);
   }
-  resource.name   = Packet.Name.parse(reader);
-  resource.type   = reader.read(16);
-  resource.class  = reader.read(16);
-  resource.ttl    = reader.read(32);
-  var length      = reader.read(16);
+  var resource = new Packet.Resource();
+  resource.name  = Packet.Name.decode(reader);
+  resource.type  = reader.read(16);
+  resource.class = reader.read(16);
+  resource.ttl   = reader.read(32);
+  var length     = reader.read(16);
   var parser = Object.keys(Packet.TYPE).filter(function(type){
     return resource.type === Packet.TYPE[ type ];
   })[0];
-  switch (resource.type) {
-    case Packet.TYPE.A:
-      var parts = [];
-      while(length--) parts.push(reader.read(8));
-      resource.host = parts.join('.');
-      break;
-    default:
-      console.error('parse unknow resource.type', resource.type);
-      break;
+  if(parser in Packet.Resource){
+    resource = Packet.Resource[ parser ].decode.call(resource, reader, length);  
+  }else{
+    console.error('node-dns > unknow parser type: %s(%j)', parser, resource.type);
+    var arr = [];
+    while(length--) arr.push(reader.read(8));
+    resource.data = new Buffer(arr);
   }
   return resource;
 };
 
 Packet.Resource.prototype.toBuffer = function(writer){
+  var self = this;
   writer = writer || new Packet.Writer();
-  new Packet.Name(this.name).toBuffer(writer);
+  Packet.Name.encode(this.name, writer);
   writer.write(this.type,  16);
   writer.write(this.class, 16);
   writer.write(this.ttl,   32);
-  switch (this.type) {
-    case Packet.TYPE.A:
-      var parts = this.host.split('.')
-      writer.write(parts.length, 16);
-      parts.forEach(function(part){
-        writer.write(parseInt(part, 10), 8);
-      });
-      break;
-    default:
-      console.error('toBuffer unknow resource.type', resource.type);
-      break;
-  }
-  return writer.toBuffer();
+  var parser = Object.keys(Packet.TYPE).filter(function(type){
+    return self.type === Packet.TYPE[ type ];
+  })[0];
+  return Packet.Resource[ parser ].encode.call(this, writer).toBuffer();
 };
 
+/**
+ * [encode_name description]
+ * @param  {[type]} domain [description]
+ * @return {[type]}        [description]
+ */
+Packet.Name = {
+  decode: function(reader){
+    if(reader instanceof Buffer){
+      reader = new Packet.Reader(reader);
+    }
+    var b = 0, name = [];
+    do{
+      b = reader.read(8);
+      if(b === 0xc0){ // copy
+        var jump = 8 * reader.read(8);
+        var reader2 = new Packet.Reader(reader.buffer, jump);
+        return Packet.Name.decode(reader2);
+      }else{
+        if(b){
+          var part = '';
+          while(b--) part += String.fromCharCode(reader.read(8));
+          name.push(part);
+        }
+      }
+    }while(b);
+    return name.join('.');
+  },
+  encode: function(domain, writer){
+    writer = writer || new Packet.Writer();
+    domain.split('.').filter(function(part){
+      return !!part;
+    }).map(function(part){
+      writer.write(part.length, 8);
+      part.split('').map(function(c){
+        writer.write(c.charCodeAt(0), 8);
+        return c.charCodeAt(0)
+      });
+    });
+    writer.write(0, 8);
+    return writer.toBuffer();
+  }
+};
+
+
+
+/**
+ * [A description]
+ * @type {Object}
+ */
+Packet.Resource.A = {
+  encode: function(writer){
+    var parts = this.host.split('.')
+    writer.write(parts.length, 16);
+    parts.forEach(function(part){
+      writer.write(parseInt(part, 10), 8);
+    });
+    return writer;
+  },
+  decode: function(reader, length){
+    var parts = [];
+    while(length--) parts.push(reader.read(8));
+    this.host = parts.join('.');
+    return this;
+  }
+};
+
+// Packet.Resource.NS = {
+//   decode: function(reader, length){
+//     this.ns = Packet.Name.decode(reader);
+//     return this;
+//   }
+// };
+
+Packet.Resource.AAAA = {
+  decode: function(reader, length){
+    var parts = [];
+    while(length){
+      length-=16;
+      parts.push(reader.read(16));
+    };
+    this.host = parts.map(function(part){
+      return part.toString(16);
+    }).join(':');
+    return this;
+  }
+};
+
+Packet.Resource.MX = {
+  decode: function(reader, length){
+    this.priority = reader.read(16);
+    this.exchange = Packet.Name.decode(reader);
+    return this; 
+  }
+};
+Packet.Resource.SPF =
+Packet.Resource.TXT = {
+  decode: function(reader, length){
+    var parts = [];
+    while(length--) parts.push(reader.read(8));
+    this.data = new Buffer(parts).toString('utf8');
+    return this;
+  }
+};
+
+Packet.Resource.SOA = {
+  decode: function(reader){
+    this.primary    = Packet.Name.decode(reader);
+    this.admin      = Packet.Name.decode(reader);
+    this.serial     = reader.read(32);
+    this.refresh    = reader.read(32);
+    this.retry      = reader.read(32);
+    this.expiration = reader.read(32);
+    this.minimum    = reader.read(32);
+    return this;
+  }
+};
+
+Packet.Reader = BufferReader;
+Packet.Writer = BufferWriter;
 module.exports = Packet;

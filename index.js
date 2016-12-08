@@ -36,8 +36,10 @@ DNS.prototype.lookup = function(domain, callback){
   this.map[ request.id ] = callback;
   request.questions.push({
     name: domain,
-    type: Packet.TYPE.ANY
+    type: Packet.TYPE.ANY,
+    class: Packet.CLASS.IN
   });
+  // console.log(request.toBuffer());
   this.socket.send(request.toBuffer(), this.options.port, this.options.servers);
 };
 

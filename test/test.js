@@ -18,17 +18,17 @@ var response = new Buffer([
 describe('DNS Packet', function(){
   
   it('Name#encode', function(){
-    var name = new Packet.Name('www.google.com');
+    var name = Packet.Name.encode('www.google.com');
     var pattern = [ 3,'w','w','w',5,'g','o','o','g','l','e',3,'c','o','m', '0' ];
-    assert.equal(name.toBuffer().length, pattern.length);
+    assert.equal(name.length, pattern.length);
   });
   
   it('Name#decode', function(){
     var reader = new Packet.Reader(response, 8 * 12);
-    var name = Packet.Name.parse(reader);
+    var name = Packet.Name.decode(reader);
     assert.equal(name, 'www.z.cn');
     reader.offset = 8 * 26;
-    var name = Packet.Name.parse(reader);
+    var name = Packet.Name.decode(reader);
     assert.equal(reader.offset, 8 * 28);
     assert.equal(name, 'www.z.cn');
     
