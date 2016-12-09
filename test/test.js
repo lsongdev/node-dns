@@ -79,7 +79,7 @@ describe('DNS Packet', function(){
     assert.equal(packet.questions[0].class, Packet.CLASS.IN);
     assert.equal(packet.answers[0].class, Packet.TYPE.A);
     assert.equal(packet.answers[0].class, Packet.CLASS.IN);
-    assert.equal(packet.answers[0].host, '54.222.60.252');
+    assert.equal(packet.answers[0].address, '54.222.60.252');
   });
   // 
   it('Packet#encode', function(){
@@ -118,7 +118,7 @@ describe('DNS Packet', function(){
       type: Packet.TYPE.A,
       class: Packet.CLASS.IN,
       ttl: 400,
-      host: '192.168.1.1'
+      address: '192.168.1.1'
     });
     
     assert.deepEqual(Packet.parse(packet.toBuffer()), packet);

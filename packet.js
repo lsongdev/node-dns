@@ -83,8 +83,12 @@ Packet.parse = function(buffer){
     var decoder = def[1];
     var count   = def[2];
     while(count--){
-      packet[ section ] = packet[ section ] || [];
-      packet[ section ].push( decoder.parse(reader) );
+      try{
+        packet[ section ] = packet[ section ] || [];
+        packet[ section ].push( decoder.parse(reader) );
+      }catch(e){
+        console.error('node-dns > parse %s error:', section, e.message);
+      }
     }
   });
   return packet;
@@ -295,24 +299,29 @@ Packet.Resource.prototype.toBuffer = function(writer){
  */
 Packet.Name = {
   decode: function(reader){
+    var name = [], len, o, c;
     if(reader instanceof Buffer){
       reader = new Packet.Reader(reader);
     }
-    var b = 0, name = [];
-    do{
-      b = reader.read(8);
-      if(b === 0xc0){ // copy
-        var jump = 8 * reader.read(8);
-        var reader2 = new Packet.Reader(reader.buffer, jump);
-        return Packet.Name.decode(reader2);
+    len = reader.read(8);
+    while(len){
+      if((len & 0xc0) === 0xc0){
+        len -= 0xc0;
+        len = len << 8;
+        var pos = len + reader.read(8) * 8;
+        if(!c) o = reader.offset;
+        c = true;
+        reader.offset = pos;
+        len = reader.read(8);
+        continue;
       }else{
-        if(b){
-          var part = '';
-          while(b--) part += String.fromCharCode(reader.read(8));
-          name.push(part);
-        }
+        var part = '';
+        while(len--) part += String.fromCharCode(reader.read(8));
+        name.push(part);
+        len = reader.read(8);
       }
-    }while(b);
+    }
+    if(c) reader.offset = o;
     return name.join('.');
   },
   encode: function(domain, writer){
@@ -339,7 +348,7 @@ Packet.Name = {
  */
 Packet.Resource.A = {
   encode: function(writer){
-    var parts = this.host.split('.')
+    var parts = this.address.split('.')
     writer.write(parts.length, 16);
     parts.forEach(function(part){
       writer.write(parseInt(part, 10), 8);
@@ -349,28 +358,35 @@ Packet.Resource.A = {
   decode: function(reader, length){
     var parts = [];
     while(length--) parts.push(reader.read(8));
-    this.host = parts.join('.');
+    this.address = parts.join('.');
     return this;
   }
 };
-
-// Packet.Resource.NS = {
-//   decode: function(reader, length){
-//     this.ns = Packet.Name.decode(reader);
-//     return this;
-//   }
-// };
 
 Packet.Resource.AAAA = {
   decode: function(reader, length){
     var parts = [];
     while(length){
-      length-=16;
+      length-=2;
       parts.push(reader.read(16));
     };
-    this.host = parts.map(function(part){
-      return part.toString(16);
+    this.address = parts.map(function(part){
+      return part > 0 ? part.toString(16) : '';
     }).join(':');
+    return this;
+  }
+};
+
+Packet.Resource.NS = {
+  decode: function(reader, length){
+    this.ns = Packet.Name.decode(reader);
+    return this;
+  }
+};
+
+Packet.Resource.CNAME = {
+  decode: function(reader, length){
+    this.domain = Packet.Name.decode(reader);
     return this;
   }
 };
