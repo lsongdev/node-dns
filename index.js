@@ -14,12 +14,19 @@ function DNS(options){
   for(var k in options){
     defaults[ k ] = options[k];
   }
-  this.map = {};
+  this.events = {};
   this.options = defaults;
   this.socket = udp.createSocket('udp4');
   this.socket.on('message', function(message){
-    var response = Packet.parse(message);
-    self.map[ response.id ](null, response);
+    var err, response;
+    try{
+      response = Packet.parse(message);
+    }catch(e){
+      err = e;
+    }
+    if(response.header.id in self.events){
+      self.events[ response.header.id ](err, response);
+    }
     this.close();
   });
 }
@@ -29,18 +36,14 @@ function DNS(options){
  * @param  {[type]} request [description]
  * @return {[type]}         [description]
  */
-DNS.prototype.lookup = function(domain, callback){
-  var request = new Packet({
-    id: Math.floor(Math.random() * 1e5)
-  });
-  this.map[ request.id ] = callback;
-  request.questions.push({
-    name: domain,
-    type: Packet.TYPE.ANY,
-    class: Packet.CLASS.IN
-  });
-  // console.log(request.toBuffer());
+DNS.prototype.lookup = function(request, callback){
+  if(!(request instanceof Packet)){
+    request = new Packet(new Packet.Question(request));
+  }
+  request.header.id = Packet.uuid();
+  this.events[ request.header.id ] = callback;
   this.socket.send(request.toBuffer(), this.options.port, this.options.servers);
+  return this;
 };
 
 

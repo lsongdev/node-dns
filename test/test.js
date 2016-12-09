@@ -27,6 +27,7 @@ describe('DNS Packet', function(){
     var reader = new Packet.Reader(response, 8 * 12);
     var name = Packet.Name.decode(reader);
     assert.equal(name, 'www.z.cn');
+    
     reader.offset = 8 * 26;
     var name = Packet.Name.decode(reader);
     assert.equal(reader.offset, 8 * 28);
@@ -65,12 +66,23 @@ describe('DNS Packet', function(){
       type: Packet.TYPE.A,
       class: Packet.CLASS.IN
     });
-    
+    // 
     assert.deepEqual(question.toBuffer(), new Buffer([
       0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 
       0x63, 0x6f, 0x6d, 0x00, 0x00, 0x01, 0x00, 0x01
     ]));
   });
+  
+  it('Question#decode', function(){
+    
+    var question = new Packet.Question('google.com', 
+      Packet.TYPE.A, Packet.CLASS.IN);
+    assert.deepEqual(question.toBuffer(), new Buffer([
+      0x06, 0x67, 0x6f, 0x6f, 0x67, 0x6c, 0x65, 0x03, 
+      0x63, 0x6f, 0x6d, 0x00, 0x00, 0x01, 0x00, 0x01
+    ]));
+  });
+  
   // 
   it('Packet#parse', function(){
     var packet = Packet.parse(response);
@@ -107,20 +119,8 @@ describe('DNS Packet', function(){
       ra: 1
     });
     
-    packet.questions.push({
-      name: 'www.z.cn',
-      type: Packet.TYPE.A,
-      class: Packet.CLASS.IN
-    });
-    
-    packet.answers.push({
-      name: 'www.z.cn',
-      type: Packet.TYPE.A,
-      class: Packet.CLASS.IN,
-      ttl: 400,
-      address: '192.168.1.1'
-    });
-    
+    packet.questions.push(new Packet.Question('www.z.cn'));
+    packet.answers.push(new Packet.Resource.A('192.168.1.1'));
     assert.deepEqual(Packet.parse(packet.toBuffer()), packet);
     
   });

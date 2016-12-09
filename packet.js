@@ -13,11 +13,30 @@ const BufferWriter = require('./lib/writer');
  *   <-W--W--W-----Z-----C--N>|<----------->|
  */
 function Packet(data){
-  this.header      = data || {};
+  this.header      = {};
   this.questions   = [];
   this.answers     = [];
   this.authorities = [];
   this.additionals = [];
+  if(data instanceof Packet){
+    return data;
+  }else if(data instanceof Packet.Header){
+    this.header = data;
+  }else if(data instanceof Packet.Question){
+    this.questions.push(data);
+  }else if(data instanceof Packet.Resource){
+    this.answers.push(data);
+  }else if(typeof data === 'string'){
+    this.questions.push(data);
+  }else if(typeof data === 'object'){
+    var type = ({}).toString.call(data).match(/\[object (\w+)\]/)[1];
+    if(type === 'Array'){
+      this.questions = data;
+    }
+    if(type === 'Object'){
+      this.header = data;
+    }
+  }
   return this;
 };
 
@@ -63,6 +82,13 @@ Packet.CLASS = {
   ANY: 0xFF
 };
 
+/**
+ * [uuid description]
+ * @return {[type]} [description]
+ */
+Packet.uuid = function(){
+  return Math.floor(Math.random() * 1e5);
+};
 
 /**
  * [parse description]
@@ -100,8 +126,8 @@ Packet.parse = function(buffer){
  */
 Packet.prototype.toBuffer = function(writer){
   writer = writer || new Packet.Writer();
-  this.header.qdcount = this.questions.length;
-  this.header.ancount = this.answers.length;
+  this.header.qdcount = this.questions  .length;
+  this.header.ancount = this.answers    .length;
   this.header.nscount = this.authorities.length;
   this.header.arcount = this.additionals.length;
   if(!(this instanceof Packet.Header))
@@ -116,9 +142,7 @@ Packet.prototype.toBuffer = function(writer){
     var section   = def[0];
     var Encoder   = def[1];
     (this[ section ] || []).map(function(resource){
-      if(!(resource instanceof Encoder))
-        resource = new Encoder(resource);
-      resource.toBuffer(writer);
+      return Encoder.encode(resource, writer);
     });
   }.bind(this));
   return writer.toBuffer();
@@ -201,22 +225,37 @@ Packet.Header.prototype.toBuffer = function(writer){
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.2
  */
 Packet.Question = function(name, type, cls){
+  var defaults = {
+    type : Packet.TYPE .ANY,
+    class: Packet.CLASS.ANY
+  };
   if(typeof name === 'object'){
     for(var k in name)
-      this[ k ] = name[k];
+      this[ k ] = name[k] || defaults[k];
   }else{
     this.name = name;
-    this.type = type;
-    this.class = cls;
+    this.type = type || defaults.type;
+    this.class = cls || defaults.class;
   }
   return this;
 };
+
+/**
+ * [toBuffer description]
+ * @param  {[type]} writer [description]
+ * @return {[type]}        [description]
+ */
+Packet.Question.prototype.toBuffer = function(writer){
+  return Packet.Question.encode(this, writer);
+};
+
 /**
  * [parse description]
  * @param  {[type]} reader [description]
  * @return {[type]}        [description]
  */
-Packet.Question.parse = function(reader){
+Packet.Question.parse = 
+Packet.Question.decode = function(reader){
   var question = new Packet.Question();
   if(reader instanceof Buffer){
     reader = new Packet.Reader(reader);
@@ -227,35 +266,74 @@ Packet.Question.parse = function(reader){
   return question;
 };
 
-Packet.Question.prototype.toBuffer = function(writer){
+Packet.Question.encode = function(question, writer){
   writer = writer || new Packet.Writer();
-  Packet.Name.encode(this.name, writer);
-  writer.write(this.type,  16);
-  writer.write(this.class, 16);
+  Packet.Name.encode(question.name, writer);
+  writer.write(question.type,  16);
+  writer.write(question.class, 16);
   return writer.toBuffer();
 };
+
 /**
  * Resource record format
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.3
  */
 Packet.Resource = function(name, type, cls, ttl){
+  var defaults = {
+    name : '',
+    ttl  : 300,
+    type : Packet.TYPE .ANY,
+    class: Packet.CLASS.ANY
+  };
   if(typeof name === 'object'){
     for(var k in name)
-      this[ k ] = name[k];
+      this[ k ] || name[k] || defaults[k];
   }else{
-    this.name  = name;
-    this.type  = type;
-    this.class = cls;
-    this.ttl   = ttl;
+    this.name  = name || defaults.name;
+    this.type  = type || defaults.type;
+    this.ttl   = ttl  || defaults.ttl;
+    this.class = cls  || defaults.class;
   }
   return this;
+};
+
+/**
+ * [toBuffer description]
+ * @param  {[type]} writer [description]
+ * @return {[type]}        [description]
+ */
+Packet.Resource.prototype.toBuffer = function(writer){
+  return Packet.Resource.encode(this, writer);
+};
+
+/**
+ * [encode description]
+ * @param  {[type]} resource [description]
+ * @param  {[type]} writer   [description]
+ * @return {[type]}          [description]
+ */
+Packet.Resource.encode = function(resource, writer){
+  writer = writer || new Packet.Writer();
+  Packet.Name.encode(resource.name, writer);
+  writer.write(resource.type,  16);
+  writer.write(resource.class, 16);
+  writer.write(resource.ttl,   32);
+  var encoder = Object.keys(Packet.TYPE).filter(function(type){
+    return resource.type == Packet.TYPE[ type ];
+  })[0];
+  if(encoder in Packet.Resource && Packet.Resource[ encoder ].encode){
+    return Packet.Resource[ encoder ].encode(resource, writer);
+  }else{
+    console.error('node-dns > unknow encoder %s(%j)', encoder, resource.type);
+  }
 };
 /**
  * [parse description]
  * @param  {[type]} reader [description]
  * @return {[type]}        [description]
  */
-Packet.Resource.parse = function(reader){
+Packet.Resource.parse = 
+Packet.Resource.decode = function(reader){
   if(reader instanceof Buffer){
     reader = new Packet.Reader(reader);
   }
@@ -279,38 +357,24 @@ Packet.Resource.parse = function(reader){
   return resource;
 };
 
-Packet.Resource.prototype.toBuffer = function(writer){
-  var self = this;
-  writer = writer || new Packet.Writer();
-  Packet.Name.encode(this.name, writer);
-  writer.write(this.type,  16);
-  writer.write(this.class, 16);
-  writer.write(this.ttl,   32);
-  var parser = Object.keys(Packet.TYPE).filter(function(type){
-    return self.type === Packet.TYPE[ type ];
-  })[0];
-  return Packet.Resource[ parser ].encode.call(this, writer).toBuffer();
-};
-
 /**
  * [encode_name description]
  * @param  {[type]} domain [description]
  * @return {[type]}        [description]
  */
 Packet.Name = {
+  COPY: 0xc0,
   decode: function(reader){
-    var name = [], len, o, c;
     if(reader instanceof Buffer){
       reader = new Packet.Reader(reader);
     }
-    len = reader.read(8);
+    var name = [], o, len = reader.read(8);
     while(len){
-      if((len & 0xc0) === 0xc0){
-        len -= 0xc0;
+      if((len & Packet.Name.COPY) === Packet.Name.COPY){
+        len -= Packet.Name.COPY;
         len = len << 8;
         var pos = len + reader.read(8) * 8;
-        if(!c) o = reader.offset;
-        c = true;
+        if(!o) o = reader.offset;
         reader.offset = pos;
         len = reader.read(8);
         continue;
@@ -321,12 +385,13 @@ Packet.Name = {
         len = reader.read(8);
       }
     }
-    if(c) reader.offset = o;
+    if(o) reader.offset = o;
     return name.join('.');
   },
   encode: function(domain, writer){
     writer = writer || new Packet.Writer();
-    domain.split('.').filter(function(part){
+    // TODO: domain name compress
+    (domain || '').split('.').filter(function(part){
       return !!part;
     }).map(function(part){
       writer.write(part.length, 8);
@@ -340,28 +405,61 @@ Packet.Name = {
   }
 };
 
-
-
 /**
  * [A description]
  * @type {Object}
  */
-Packet.Resource.A = {
-  encode: function(writer){
-    var parts = this.address.split('.')
-    writer.write(parts.length, 16);
-    parts.forEach(function(part){
-      writer.write(parseInt(part, 10), 8);
-    });
-    return writer;
-  },
-  decode: function(reader, length){
-    var parts = [];
-    while(length--) parts.push(reader.read(8));
-    this.address = parts.join('.');
-    return this;
-  }
+Packet.Resource.A = function(address){
+  Packet.Resource.call(this);
+  this.type  = Packet.TYPE.A;
+  this.class = Packet.CLASS.IN;
+  this.address = address;
+  return this;
 };
+
+Packet.Resource.A.encode = function(record, writer){
+  writer = writer || new Packet.Writer();
+  var parts = record.address.split('.');
+  writer.write(parts.length, 16);
+  parts.forEach(function(part){
+    writer.write(parseInt(part, 10), 8);
+  });
+  return writer.toBuffer();
+};
+
+Packet.Resource.A.decode = function(reader, length){
+  var parts = [];
+  while(length--) parts.push(reader.read(8));
+  this.address = parts.join('.');
+  return this;
+};
+
+/**
+ * [MX description]
+ * @param {[type]} exchange [description]
+ * @param {[type]} priority [description]
+ */
+Packet.Resource.MX = function(exchange, priority){
+  Packet.Resource.apply(this, arguments);
+  this.type = Packet.TYPE.MX;
+  this.exchange = exchange;
+  this.priority = priority;
+  return this;
+}
+
+Packet.Resource.MX.encode = function(record){
+  var writer = this.write ? this : new Packet.Writer();
+  writer.write(record.priority, 16);
+  Packet.Name.encode(record.exchange, writer);
+  return writer.toBuffer();
+}
+
+Packet.Resource.MX.decode = function(reader, length){
+  this.priority = reader.read(16);
+  this.exchange = Packet.Name.decode(reader);
+  return this; 
+};
+
 
 Packet.Resource.AAAA = {
   decode: function(reader, length){
@@ -391,13 +489,6 @@ Packet.Resource.CNAME = {
   }
 };
 
-Packet.Resource.MX = {
-  decode: function(reader, length){
-    this.priority = reader.read(16);
-    this.exchange = Packet.Name.decode(reader);
-    return this; 
-  }
-};
 Packet.Resource.SPF =
 Packet.Resource.TXT = {
   decode: function(reader, length){
