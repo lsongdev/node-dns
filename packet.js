@@ -159,7 +159,7 @@ Packet.Header = function(header){
   this.opcode  = 0;
   this.aa      = 0;
   this.tc      = 0;
-  this.rd      = 0;
+  this.rd      = 1;
   this.ra      = 0;
   this.z       = 0;
   this.rcode   = 0;
@@ -373,9 +373,9 @@ Packet.Name = {
       if((len & Packet.Name.COPY) === Packet.Name.COPY){
         len -= Packet.Name.COPY;
         len = len << 8;
-        var pos = len + reader.read(8) * 8;
+        var pos = len + reader.read(8);
         if(!o) o = reader.offset;
-        reader.offset = pos;
+        reader.offset = pos * 8;
         len = reader.read(8);
         continue;
       }else{

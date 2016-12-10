@@ -26,7 +26,7 @@ Server.prototype.parse = function(buffer, rinfo){
 };
 
 Server.prototype.send = function(rinfo, response){
-  this.socket.send(response.toBuffer(), rinfo.port, rinfo.address);
+  this.socket.send(response, rinfo.port, rinfo.address);
 };
 
 /**

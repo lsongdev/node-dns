@@ -21,6 +21,7 @@ function DNS(options){
     var err, response;
     try{
       response = Packet.parse(message);
+      console.log(response);
     }catch(e){
       err = e;
     }
