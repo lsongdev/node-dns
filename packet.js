@@ -408,9 +408,9 @@ Packet.Name = {
 /**
  * [A description]
  * @type {Object}
+ * @docs https://tools.ietf.org/html/rfc1035#section-3.4.1
  */
 Packet.Resource.A = function(address){
-  Packet.Resource.call(this);
   this.type  = Packet.TYPE.A;
   this.class = Packet.CLASS.IN;
   this.address = address;
@@ -438,29 +438,45 @@ Packet.Resource.A.decode = function(reader, length){
  * [MX description]
  * @param {[type]} exchange [description]
  * @param {[type]} priority [description]
+ * @docs https://tools.ietf.org/html/rfc1035#section-3.3.9
  */
 Packet.Resource.MX = function(exchange, priority){
-  Packet.Resource.apply(this, arguments);
   this.type = Packet.TYPE.MX;
+  this.class = Packet.CLASS.IN;
   this.exchange = exchange;
   this.priority = priority;
   return this;
 }
-
-Packet.Resource.MX.encode = function(record){
-  var writer = this.write ? this : new Packet.Writer();
+/**
+ * [encode description]
+ * @param  {[type]} record [description]
+ * @param  {[type]} writer [description]
+ * @return {[type]}        [description]
+ */
+Packet.Resource.MX.encode = function(record, writer){
+  writer = writer || new Packet.Writer();
+  var len = Packet.Name.encode(record.exchange).length;
+  writer.write(len + 2, 16);
   writer.write(record.priority, 16);
   Packet.Name.encode(record.exchange, writer);
   return writer.toBuffer();
 }
-
+/**
+ * [decode description]
+ * @param  {[type]} reader [description]
+ * @param  {[type]} length [description]
+ * @return {[type]}        [description]
+ */
 Packet.Resource.MX.decode = function(reader, length){
   this.priority = reader.read(16);
   this.exchange = Packet.Name.decode(reader);
   return this; 
 };
-
-
+/**
+ * [AAAA description]
+ * @type {Object}
+ * @docs https://en.wikipedia.org/wiki/IPv6
+ */
 Packet.Resource.AAAA = {
   decode: function(reader, length){
     var parts = [];
@@ -472,35 +488,81 @@ Packet.Resource.AAAA = {
       return part > 0 ? part.toString(16) : '';
     }).join(':');
     return this;
+  },
+  encode: function(record, writer){
+    writer = writer || new Packet.Writer();
+    var parts = record.address.split(':');
+    writer.write(parts.length * 2, 16);
+    parts.forEach(function(part){
+      writer.write(parseInt(part, 16), 16);
+    });
+    return writer;
   }
 };
-
+/**
+ * [NS description]
+ * @type {Object}
+ * @docs https://tools.ietf.org/html/rfc1035#section-3.3.11
+ */
 Packet.Resource.NS = {
   decode: function(reader, length){
     this.ns = Packet.Name.decode(reader);
     return this;
+  },
+  encode: function(record, writer){
+    writer = writer || new Packet.Writer();
+    writer.write(Packet.Name.encode(record.ns).length, 16);
+    Packet.Name.encode(record.ns, writer);
+    return writer;
   }
 };
-
+/**
+ * [CNAME description]
+ * @type {Object}
+ * @docs https://tools.ietf.org/html/rfc1035#section-3.3.1
+ */
 Packet.Resource.CNAME = {
   decode: function(reader, length){
     this.domain = Packet.Name.decode(reader);
     return this;
+  },
+  encode: function(record, writer){
+    writer = writer || new Packet.Writer();
+    writer.write(Packet.Name.encode(record.domain).length, 16);
+    Packet.Name.encode(record.domain, writer);
+    return writer;
   }
 };
-
-Packet.Resource.SPF =
+/**
+ * [SPF description]
+ * @type {[type]}
+ * @docs https://tools.ietf.org/html/rfc1035#section-3.3.14
+ */
+// Packet.Resource.SPF =
 Packet.Resource.TXT = {
   decode: function(reader, length){
     var parts = [];
     while(length--) parts.push(reader.read(8));
     this.data = new Buffer(parts).toString('utf8');
     return this;
+  },
+  encode: function(record, writer){
+    writer = writer || new Packet.Writer();
+    var buffer = new Buffer(record.data);
+    writer.write(buffer.length, 16);
+    buffer.forEach(function(c){
+      writer.write(c, 8);
+    });
+    return writer;
   }
 };
-
+/**
+ * [SOA description]
+ * @type {Object}
+ * @docs https://tools.ietf.org/html/rfc1035#section-3.3.13
+ */
 Packet.Resource.SOA = {
-  decode: function(reader){
+  decode: function(reader, length){
     this.primary    = Packet.Name.decode(reader);
     this.admin      = Packet.Name.decode(reader);
     this.serial     = reader.read(32);
@@ -509,6 +571,22 @@ Packet.Resource.SOA = {
     this.expiration = reader.read(32);
     this.minimum    = reader.read(32);
     return this;
+  },
+  encode: function(record, writer){
+    writer = writer || new Packet.Writer();
+    var len = 0;
+    len += Packet.Name.encode(record.primary).length;
+    len += Packet.Name.encode(record.admin).length;
+    len += (32 * 5) / 8;
+    writer.write(len, 16);
+    Packet.Name.encode(record.primary, writer);
+    Packet.Name.encode(record.admin, writer);
+    writer.write(record.serial    , 32);
+    writer.write(record.refresh   , 32);
+    writer.write(record.retry     , 32);
+    writer.write(record.expiration, 32);
+    writer.write(record.minimum   , 32);
+    return writer;
   }
 };
 
