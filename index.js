@@ -12,7 +12,7 @@ function DNS(options){
     retries: 3,
     timeout: 3,
     servers: [
-      '8.8.8.1',
+      '8.8.8.8',
       '8.8.4.4',
       '114.114.114.114'
     ],

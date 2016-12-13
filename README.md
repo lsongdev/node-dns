@@ -8,11 +8,10 @@
 ### Installation
 
 ```bash
-$ npm install dns2 --save
+$ npm i dns2
 ```
 
 ### Example
-
 
 ```js
 const DNS = require('dns2');
@@ -61,6 +60,12 @@ var server = dns.createServer(function(request){
 - dns2.Server()
 - dns2.createServer()
 - dns2.lookup()
+
+### SPEC
+
++ rfc1034 https://tools.ietf.org/html/rfc1034
++ rfc1035 https://tools.ietf.org/html/rfc1035
++ rfc2782 https://tools.ietf.org/html/rfc2782
 
 ### Contributing
 - Fork this Repo first

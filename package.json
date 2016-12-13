@@ -1,6 +1,6 @@
 {
   "name": "dns2",
-  "version": "1.2.0",
+  "version": "1.3.0",
   "description": "A dns server and client implementation",
   "main": "index.js",
   "scripts": {
@@ -20,6 +20,6 @@
   },
   "homepage": "https://github.com/song940/node-dns#readme",
   "devDependencies": {
-    "mocha": "^3.2.0"
+    "mocha": "*"
   }
 }
