@@ -538,7 +538,7 @@ Packet.Resource.CNAME = {
  * @type {[type]}
  * @docs https://tools.ietf.org/html/rfc1035#section-3.3.14
  */
-// Packet.Resource.SPF =
+Packet.Resource.SPF =
 Packet.Resource.TXT = {
   decode: function(reader, length){
     var parts = [];
@@ -548,7 +548,7 @@ Packet.Resource.TXT = {
   },
   encode: function(record, writer){
     writer = writer || new Packet.Writer();
-    var buffer = new Buffer(record.data);
+    var buffer = new Buffer(record.data, 'utf8');
     writer.write(buffer.length, 16);
     buffer.forEach(function(c){
       writer.write(c, 8);

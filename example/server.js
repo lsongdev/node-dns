@@ -59,13 +59,13 @@ var server = dns.createServer(function(request, send){
     minimum: 10
   });
   // 
-  // response.additionals.push({
-  //   name : 'lsong.org',
-  //   type : dns.Packet.TYPE.TXT,
-  //   class: dns.Packet.CLASS.IN,
-  //   ttl: 300,
-  //   data: 'hello world'
-  // });
+  response.additionals.push({
+    name : 'lsong.org',
+    type : dns.Packet.TYPE.TXT,
+    class: dns.Packet.CLASS.IN,
+    ttl: 300,
+    data: 'hello world'
+  });
   
   send(response);
   
