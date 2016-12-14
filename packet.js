@@ -496,7 +496,7 @@ Packet.Resource.AAAA = {
     parts.forEach(function(part){
       writer.write(parseInt(part, 16), 16);
     });
-    return writer;
+    return writer.toBuffer();
   }
 };
 /**
@@ -513,7 +513,7 @@ Packet.Resource.NS = {
     writer = writer || new Packet.Writer();
     writer.write(Packet.Name.encode(record.ns).length, 16);
     Packet.Name.encode(record.ns, writer);
-    return writer;
+    return writer.toBuffer();
   }
 };
 /**
@@ -530,7 +530,7 @@ Packet.Resource.CNAME = {
     writer = writer || new Packet.Writer();
     writer.write(Packet.Name.encode(record.domain).length, 16);
     Packet.Name.encode(record.domain, writer);
-    return writer;
+    return writer.toBuffer();
   }
 };
 /**
@@ -553,7 +553,7 @@ Packet.Resource.TXT = {
     buffer.forEach(function(c){
       writer.write(c, 8);
     });
-    return writer;
+    return writer.toBuffer();
   }
 };
 /**
@@ -586,7 +586,29 @@ Packet.Resource.SOA = {
     writer.write(record.retry     , 32);
     writer.write(record.expiration, 32);
     writer.write(record.minimum   , 32);
-    return writer;
+    return writer.toBuffer();
+  }
+};
+/**
+ * [SRV description]
+ * @type {Object}
+ * @docs https://tools.ietf.org/html/rfc2782
+ */
+Packet.Resource.SRV = {
+  decode: function(reader, length){
+    this.priority = reader.read(16);
+    this.weight   = reader.read(16);
+    this.port     = reader.read(16);
+    this.target   = Packet.Name.decode(reader);
+    return this;
+  },
+  encode: function(record, writer){
+    writer = writer || new Packet.Writer();
+    writer.write(record.priority, 16);
+    writer.write(record.weight  , 16);
+    writer.write(record.port    , 16);
+    writer.write(record.target  , 16);
+    return writer.toBuffer();
   }
 };
 
