@@ -93,35 +93,77 @@ describe('DNS Packet', function(){
     assert.equal(packet.answers[0].class, Packet.CLASS.IN);
     assert.equal(packet.answers[0].address, '54.222.60.252');
   });
-  // 
-  it('Packet#encode', function(){
-    
-    var packet = new Packet({
-      id: 10596,
-      qr: 0,
-      rd: 1
-    });
-    packet.questions.push({
-      name: 'google.com', 
-      type: Packet.TYPE.A,
-      class: Packet.CLASS.IN
-    });
-    assert.deepEqual(packet.toBuffer(), request);
-    
-  });
   
   it('Packet#encode', function(){
     
-    var packet = new Packet({
-      id: 10596,
-      qr: 1,
-      rd: 1,
-      ra: 1
+    
+    var response = new Packet();
+    //
+    response.header.qr = 1;
+    response.answers.push({
+      name : 'lsong.org',
+      type : Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 300,
+      address: '127.0.0.1'
     });
     
-    packet.questions.push(new Packet.Question('www.z.cn'));
-    packet.answers.push(new Packet.Resource.A('192.168.1.1'));
-    assert.deepEqual(Packet.parse(packet.toBuffer()), packet);
+    response.answers.push({
+      name : 'lsong.org',
+      type : Packet.TYPE.AAAA,
+      class: Packet.CLASS.IN,
+      ttl: 300,
+      address: '2001:db8::::ff00:42:8329'
+    });
+    
+    response.answers.push({
+      name : 'lsong.org',
+      type : Packet.TYPE.CNAME,
+      class: Packet.CLASS.IN,
+      ttl: 300,
+      domain: 'sfo1.lsong.org'
+    });
+    
+    response.authorities.push({
+      name : 'lsong.org',
+      type : Packet.TYPE.MX,
+      class: Packet.CLASS.IN,
+      ttl: 300,
+      exchange: 'mail.lsong.org',
+      priority: 5
+    });
+    
+    response.authorities.push({
+      name : 'lsong.org',
+      type : Packet.TYPE.NS,
+      class: Packet.CLASS.IN,
+      ttl: 300,
+      ns: 'ns1.lsong.org',
+    });
+    
+    response.additionals.push({
+      name : 'lsong.org',
+      type : Packet.TYPE.SOA,
+      class: Packet.CLASS.IN,
+      ttl: 300,
+      primary: 'lsong.org',
+      admin: 'admin@lsong.org',
+      serial: 2016121301,
+      refresh: 300,
+      retry: 3,
+      expiration: 10,
+      minimum: 10
+    });
+    // 
+    response.additionals.push({
+      name : 'lsong.org',
+      type : Packet.TYPE.TXT,
+      class: Packet.CLASS.IN,
+      ttl: 300,
+      data: '#v=spf1 include:_spf.google.com ~all'
+    });
+    
+    assert.deepEqual(Packet.parse(response.toBuffer()), response);
     
   });
   

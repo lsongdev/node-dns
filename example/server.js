@@ -2,71 +2,43 @@ const udp    = require('dgram');
 const dns    = require('../');
 const Packet = require('../packet');
 
-var server = dns.createServer(function(request, send){
 
-  var response = new dns.Packet(request);
-  //
-  response.header.qr = 1;
-  response.answers.push({
-    name : 'lsong.org',
-    type : dns.Packet.TYPE.A,
-    class: dns.Packet.CLASS.IN,
-    address: '127.0.0.1'
-  });
+var hosts = {
+  'weibo.com': '127.0.0.1',
+  'www.facebook.com': '127.0.0.1',
+  'twitter.com': '127.0.0.1',
+  'google.com': '127.0.0.1',
+};
+
+var server = dns.createServer(function(request, send){
   
-  response.answers.push({
-    name : 'lsong.org',
-    type : dns.Packet.TYPE.AAAA,
-    class: dns.Packet.CLASS.IN,
-    address: '2001:0db8:0000:0000:0000:ff00:0042:8329'
-  });
+  var query = request.questions[0].name;
   
-  response.answers.push({
-    name : 'lsong.org',
-    type : dns.Packet.TYPE.CNAME,
-    class: dns.Packet.CLASS.IN,
-    domain: 'sfo1.lsong.org'
-  });
+  console.log('> request %s', query);
   
-  response.authorities.push({
-    name : 'lsong.org',
-    type : dns.Packet.TYPE.MX,
-    class: dns.Packet.CLASS.IN,
-    ttl: 300,
-    exchange: 'mail.lsong.org',
-    priority: 5
-  });
+  if(hosts[query]){
+    var response = new Packet(request);
+    response.header.qr = 1;
+    response.header.ra = 1;
+    response.answers.push({
+      name: query,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 300,
+      address: hosts[ query ]
+    });
+    send(response);
+  }else{
+    var socket = udp.createSocket('udp4');
+
+    socket.on('message', function (message, rinfo) {
+      var response = Packet.parse(message);
+      console.log(response);
+      send(response);
+    });
+
+    var buf = request.toBuffer();
+    socket.send(buf, 0, buf.length, 53, '8.8.8.8');
+  }
   
-  response.authorities.push({
-    name : 'lsong.org',
-    type : dns.Packet.TYPE.NS,
-    class: dns.Packet.CLASS.IN,
-    ttl: 300,
-    ns: 'ns1.lsong.org',
-  });
-  
-  response.additionals.push({
-    name : 'lsong.org',
-    type : dns.Packet.TYPE.SOA,
-    class: dns.Packet.CLASS.IN,
-    ttl: 300,
-    primary: 'lsong.org',
-    admin: 'admin@lsong.org',
-    serial: 2016121301,
-    refresh: 300,
-    retry: 3,
-    expiration: 10,
-    minimum: 10
-  });
-  // 
-  response.additionals.push({
-    name : 'lsong.org',
-    type : dns.Packet.TYPE.TXT,
-    class: dns.Packet.CLASS.IN,
-    ttl: 300,
-    data: 'hello world'
-  });
-  
-  send(response);
-  
-}).listen(5354);
+}).listen(53);
