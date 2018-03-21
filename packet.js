@@ -542,6 +542,7 @@ Packet.Resource.SPF =
 Packet.Resource.TXT = {
   decode: function(reader, length){
     var parts = [];
+    length = reader.read(8); // text length
     while(length--) parts.push(reader.read(8));
     this.data = new Buffer(parts).toString('utf8');
     return this;
@@ -549,7 +550,8 @@ Packet.Resource.TXT = {
   encode: function(record, writer){
     writer = writer || new Packet.Writer();
     var buffer = new Buffer(record.data, 'utf8');
-    writer.write(buffer.length, 16);
+    writer.write(buffer.length + 1, 16); // response length
+    writer.write(buffer.length, 8); // text length
     buffer.forEach(function(c){
       writer.write(c, 8);
     });
