@@ -6,17 +6,16 @@ const Packet = require('./packet');
  * @docs https://tools.ietf.org/html/rfc1035
  */
 function DNS(options){
-  var self = this;
-  var defaults = {
+  Object.assign(this, {
     port: 53,
     retries: 3,
     timeout: 3,
-    servers: [
+    nameServers: [
       '8.8.8.8',
       '8.8.4.4',
       '114.114.114.114'
     ],
-    root: [
+    rootServers: [
       'a.root-servers.net',
       'b.root-servers.net',
       'c.root-servers.net',
@@ -31,12 +30,9 @@ function DNS(options){
       'l.root-servers.net',
       'm.root-servers.net'
     ]
-  };
-  for(var k in options){
-    defaults[ k ] = options[k];
-  }
+  }, options);
+  var self = this;
   this.requests = [];
-  this.options = defaults;
   this.servers = this.options.servers.map(function(ns){
     return { server: ns, port: this.options.port, priority: 10 };
   }.bind(this));
@@ -56,6 +52,17 @@ function DNS(options){
   });
   return this;
 }
+
+DNS.prototype.query = (domain, nameservers, done) => {
+  console.log(domain, nameservers);
+};
+
+DNS.prototype.resolve = function(domain){
+  const parts = domain.split('.');
+  (function resolve(ns){
+    this.query(parts.pop(), ns, resolve);
+  }.bind(this))(this.rootServers);
+};
 
 /**
  * [send description]
