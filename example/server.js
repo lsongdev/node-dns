@@ -30,7 +30,6 @@ var server = dns.createServer(function(request, send){
     send(response);
   }else{
     var socket = udp.createSocket('udp4');
-
     socket.on('message', function (message, rinfo) {
       var response = Packet.parse(message);
       console.log(response);
