@@ -1,29 +1,29 @@
-## dns2 
+# dns2 
 
 ![NPM version](https://img.shields.io/npm/v/dns2.svg?style=flat)
 [![Build Status](https://travis-ci.org/song940/node-dns.svg?branch=master)](https://travis-ci.org/song940/node-dns)
 
-> A dns server and client implementation
+> A DNS server and client implementation
 
 ### Installation
 
 ```bash
-$ npm i dns2
+$ npm install dns2
 ```
 
-### Example
+### Example Client
+
+Lookup any records available for the domain `lsong.org`.
 
 ```js
-const DNS = require('dns2');
+const dns = require('dns2');
 
-var dns = new DNS();
-
-var packet = new DNS.Packet();
+var packet = new dns.Packet();
 
 packet.questions.push({
   name : 'lsong.org',
-  type : DNS.Packet.TYPE.ANY,
-  class: DNS.Packet.CLASS.IN
+  type : dns.Packet.TYPE.ANY,
+  class: dns.Packet.CLASS.IN
 });
 
 dns.send(packet, function(err, res){
@@ -32,42 +32,53 @@ dns.send(packet, function(err, res){
 
 ```
 
-server
+### Example Server
+
+Respond to any DNS request on UDP port 5353 with `8.8.8.8`, a Google Public DNS server address.
 
 ```js
 const dns = require('dns2');
 
-var server = dns.createServer(function(request){
+var server = dns.createServer(function(request,send){
   
   var response = new dns.Packet(request);
   
-  response.question.push({
-    address: '8.8.8.8'
+  response.header.qr = 1;
+  response.answers.push({
+    address: '8.8.8.8',
+    type: dns.Packet.TYPE.A,
+    class: dns.Packet.CLASS.IN
   });
   
-  this.send(response);
-
+  send(response);
 }).listen(5353);
-
-// dig @127.0.0.1 -p5353 lsong.org
-
 ```
+
+Then you can test your DNS server:
+
+```bash
+$ dig @127.0.0.1 -p5353 lsong.org
+```
+
+Note that when implementing your own lookups, the contents of the query
+will be found in `request.questions[0].name`.
 
 ### API
 
+- dns2.createServer()
+- dns2.lookup()
 - dns2.Packet()
 - dns2.Client()
 - dns2.Server()
-- dns2.createServer()
-- dns2.lookup()
 
-### SPEC
+### Relevant Specifications
 
-+ rfc1034 https://tools.ietf.org/html/rfc1034
-+ rfc1035 https://tools.ietf.org/html/rfc1035
-+ rfc2782 https://tools.ietf.org/html/rfc2782
++ [RFC-1034 - Domain Names - Concepts and Facilities](https://tools.ietf.org/html/rfc1034)
++ [RFC-1035 - Domain Names - Implementation and Specification](https://tools.ietf.org/html/rfc1035)
++ [RFC-2782 - A DNS RR for specifying the location of services (DNS SRV)](https://tools.ietf.org/html/rfc2782)
 
 ### Contributing
+
 - Fork this Repo first
 - Clone your Repo
 - Install dependencies by `$ npm install`
@@ -78,10 +89,11 @@ var server = dns.createServer(function(request){
 - Enjoy hacking <3
 
 ### MIT license
+
 Copyright (c) 2016 lsong
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
-of this software and associated documentation files (the &quot;Software&quot;), to deal
+of this software and associated documentation files (the "Software"), to deal
 in the Software without restriction, including without limitation the rights
 to use, copy, modify, merge, publish, distribute, sublicense, and/or sell
 copies of the Software, and to permit persons to whom the Software is
@@ -90,12 +102,10 @@ furnished to do so, subject to the following conditions:
 The above copyright notice and this permission notice shall be included in
 all copies or substantial portions of the Software.
 
-THE SOFTWARE IS PROVIDED &quot;AS IS&quot;, WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
+THE SOFTWARE IS PROVIDED "AS IS," WITHOUT WARRANTY OF ANY KIND, EXPRESS OR
 IMPLIED, INCLUDING BUT NOT LIMITED TO THE WARRANTIES OF MERCHANTABILITY,
 FITNESS FOR A PARTICULAR PURPOSE AND NONINFRINGEMENT. IN NO EVENT SHALL THE
 AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
-
----
