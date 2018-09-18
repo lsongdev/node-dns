@@ -20,15 +20,15 @@ function Packet(data){
   this.additionals = [];
   if(data instanceof Packet){
     return data;
-  }else if(data instanceof Packet.Header){
+  } else if(data instanceof Packet.Header){
     this.header = data;
-  }else if(data instanceof Packet.Question){
+  } else if(data instanceof Packet.Question){
     this.questions.push(data);
-  }else if(data instanceof Packet.Resource){
+  } else if(data instanceof Packet.Resource){
     this.answers.push(data);
-  }else if(typeof data === 'string'){
+  } else if(typeof data === 'string'){
     this.questions.push(data);
-  }else if(typeof data === 'object'){
+  } else if(typeof data === 'object'){
     var type = ({}).toString.call(data).match(/\[object (\w+)\]/)[1];
     if(type === 'Array'){
       this.questions = data;
@@ -232,7 +232,7 @@ Packet.Question = function(name, type, cls){
   if(typeof name === 'object'){
     for(var k in name)
       this[ k ] = name[k] || defaults[k];
-  }else{
+  } else {
     this.name = name;
     this.type = type || defaults.type;
     this.class = cls || defaults.class;
@@ -288,7 +288,7 @@ Packet.Resource = function(name, type, cls, ttl){
   if(typeof name === 'object'){
     for(var k in name)
       this[ k ] || name[k] || defaults[k];
-  }else{
+  } else {
     this.name  = name || defaults.name;
     this.type  = type || defaults.type;
     this.ttl   = ttl  || defaults.ttl;
@@ -323,8 +323,8 @@ Packet.Resource.encode = function(resource, writer){
   })[0];
   if(encoder in Packet.Resource && Packet.Resource[ encoder ].encode){
     return Packet.Resource[ encoder ].encode(resource, writer);
-  }else{
-    console.error('node-dns > unknow encoder %s(%j)', encoder, resource.type);
+  } else {
+    console.error('node-dns > unknown encoder %s(%j)', encoder, resource.type);
   }
 };
 /**
@@ -348,11 +348,11 @@ Packet.Resource.decode = function(reader){
   })[0];
   if(parser in Packet.Resource){
     resource = Packet.Resource[ parser ].decode.call(resource, reader, length);  
-  }else{
-    console.error('node-dns > unknow parser type: %s(%j)', parser, resource.type);
+  } else {
+    console.error('node-dns > unknown parser type: %s(%j)', parser, resource.type);
     var arr = [];
     while(length--) arr.push(reader.read(8));
-    resource.data = new Buffer(arr);
+    resource.data = Buffer.from(arr);
   }
   return resource;
 };
@@ -378,7 +378,7 @@ Packet.Name = {
         reader.offset = pos * 8;
         len = reader.read(8);
         continue;
-      }else{
+      } else {
         var part = '';
         while(len--) part += String.fromCharCode(reader.read(8));
         name.push(part);
@@ -544,12 +544,12 @@ Packet.Resource.TXT = {
     var parts = [];
     length = reader.read(8); // text length
     while(length--) parts.push(reader.read(8));
-    this.data = new Buffer(parts).toString('utf8');
+    this.data = Buffer.from(parts).toString('utf8');
     return this;
   },
   encode: function(record, writer){
     writer = writer || new Packet.Writer();
-    var buffer = new Buffer(record.data, 'utf8');
+    var buffer = Buffer.from(record.data, 'utf8');
     writer.write(buffer.length + 1, 16); // response length
     writer.write(buffer.length, 8); // text length
     buffer.forEach(function(c){
