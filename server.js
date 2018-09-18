@@ -1,4 +1,3 @@
-const tcp          = require('net');
 const util         = require('util');
 const udp          = require('dgram');
 const EventEmitter = require('events');
