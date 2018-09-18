@@ -37,23 +37,25 @@ server
 ```js
 const dns = require('dns2');
 
-var server = dns.createServer(function(request){
+var server = dns.createServer(function(request,send){
   
   var response = new dns.Packet(request);
   
-  response.question.push({
-    address: '8.8.8.8'
+  response.header.qr = 1;
+  response.answers.push({
+    address: '8.8.8.8',
+    type: dns.Packet.TYPE.A,
+    class: dns.Packet.CLASS.IN
   });
   
-  this.send(response);
-
+  send(response);
 }).listen(5353);
 
 // dig @127.0.0.1 -p5353 lsong.org
 
 ```
 
-### API
+### Api
 
 - dns2.Packet()
 - dns2.Client()
