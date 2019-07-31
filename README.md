@@ -39,9 +39,9 @@ Respond to any DNS request on UDP port 5353 with `8.8.8.8`, a Google Public DNS 
 ```js
 const dns = require('dns2');
 
-var server = dns.createServer(function(request,send){
+const server = dns.createServer(function(request,send){
   
-  var response = new dns.Packet(request);
+  const response = new dns.Packet(request);
   
   response.header.qr = 1;
   response.answers.push({

@@ -23,7 +23,7 @@ function DNS(options){
   return this;
 }
 
-DNS.prototype.query = function(domain){
+DNS.prototype.query = function(domain, type){
   return this.resolve(domain);
 };
 
@@ -32,14 +32,7 @@ DNS.prototype.send = function(packet){
 };
 
 DNS.prototype.resolve = function(domain, type, ns){
-  // ns = ns || this.rootServers;
-  // const records = await resolve(domain);
-  // if(A in records){
-  //   return records;
-  // }else{
-  //   const { ns } = records;
-  //   return resolve(domain, type, ns);
-  // }
+  // TODO:
 };
 
 /**

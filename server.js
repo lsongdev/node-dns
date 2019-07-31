@@ -21,11 +21,24 @@ class Server extends EventEmitter {
     var request = Packet.parse(buffer);
     this.emit('request', request, this.send.bind(this, rinfo));
   }
-  send(rinfo, response) {
-    this.socket.send(response.toBuffer(), rinfo.port, rinfo.address);
+  send(rinfo, message) {
+    if(message instanceof Packet)
+      message = message.toBuffer();
+    return new Promise((resolve, reject) => {
+      this.socket.send(message, rinfo.port, rinfo.address, err => {
+        if(err) return reject(err);
+        resolve(message);
+      });
+    });
   }
   listen(port, callback) {
     this.socket.bind(port, callback);
+    return this;
+  }
+  close() {
+    this.socket.close();
+    this.socket = null;
+    return this;
   }
 }
 
