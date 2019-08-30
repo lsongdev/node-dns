@@ -68,6 +68,7 @@ Packet.TYPE = {
   MAILB : 0xFD,
   MAILA : 0xFE,
   ANY   : 0xFF,
+  CAA   : 0x101,
 };
 /**
  * [QUERY_CLASS description]
@@ -610,6 +611,20 @@ Packet.Resource.SRV = {
     writer.write(record.weight  , 16);
     writer.write(record.port    , 16);
     writer.write(record.target  , 16);
+    return writer.toBuffer();
+  }
+};
+
+
+Packet.Resource.CAA = {
+  encode: function(record, writer){
+    writer = writer || new Packet.Writer();
+    writer.write(record.flags, 8)
+    writer.write((record.tag.length), 8)
+    var buffer = new Buffer(record.tag + record.value, 'utf8');
+    buffer.forEach(function(c){
+      writer.write(c, 8);
+    });
     return writer.toBuffer();
   }
 };
