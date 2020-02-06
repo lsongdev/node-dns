@@ -19,7 +19,7 @@ class Server extends EventEmitter {
   }
   parse(buffer, rinfo) {
     var request = Packet.parse(buffer);
-    this.emit('request', request, this.send.bind(this, rinfo));
+    this.emit('request', request, this.send.bind(this, rinfo), rinfo);
   }
   send(rinfo, message) {
     if(message instanceof Packet)
