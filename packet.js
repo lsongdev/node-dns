@@ -6,9 +6,9 @@ const BufferWriter = require('./lib/writer');
  * @docs https://tools.ietf.org/html/rfc1034
  * @docs https://tools.ietf.org/html/rfc1035
  *
- * <Buffer 29 64 01 00 00 01 00 00 00 00 00 00 
- *       |-ID----------- HEADER ----------->| 
- *      
+ * <Buffer 29 64 01 00 00 01 00 00 00 00 00 00
+ *       |-ID----------- HEADER ----------->|
+ *
  *  03 77 77 77 01 7a 02 63 6e 00 00 01 00 01>
  *   <-W--W--W-----Z-----C--N>|<----------->|
  */
@@ -255,7 +255,7 @@ Packet.Question.prototype.toBuffer = function(writer){
  * @param  {[type]} reader [description]
  * @return {[type]}        [description]
  */
-Packet.Question.parse = 
+Packet.Question.parse =
 Packet.Question.decode = function(reader){
   var question = new Packet.Question();
   if(reader instanceof Buffer){
@@ -333,7 +333,7 @@ Packet.Resource.encode = function(resource, writer){
  * @param  {[type]} reader [description]
  * @return {[type]}        [description]
  */
-Packet.Resource.parse = 
+Packet.Resource.parse =
 Packet.Resource.decode = function(reader){
   if(reader instanceof Buffer){
     reader = new Packet.Reader(reader);
@@ -348,7 +348,7 @@ Packet.Resource.decode = function(reader){
     return resource.type === Packet.TYPE[ type ];
   })[0];
   if(parser in Packet.Resource){
-    resource = Packet.Resource[ parser ].decode.call(resource, reader, length);  
+    resource = Packet.Resource[ parser ].decode.call(resource, reader, length);
   } else {
     console.error('node-dns > unknown parser type: %s(%j)', parser, resource.type);
     var arr = [];
@@ -471,7 +471,7 @@ Packet.Resource.MX.encode = function(record, writer){
 Packet.Resource.MX.decode = function(reader, length){
   this.priority = reader.read(16);
   this.exchange = Packet.Name.decode(reader);
-  return this; 
+  return this;
 };
 /**
  * [AAAA description]
@@ -543,19 +543,56 @@ Packet.Resource.SPF =
 Packet.Resource.TXT = {
   decode: function(reader, length){
     var parts = [];
-    length = reader.read(8); // text length
-    while(length--) parts.push(reader.read(8));
+    var bytesRead = 0, chunkLength = 0;
+
+    while(bytesRead < length){
+      chunkLength = reader.read(8); // text length
+      bytesRead++;
+
+      while(chunkLength--){
+        parts.push(reader.read(8));
+        bytesRead++;
+      }
+    }
+
     this.data = Buffer.from(parts).toString('utf8');
     return this;
   },
   encode: function(record, writer){
     writer = writer || new Packet.Writer();
-    var buffer = Buffer.from(record.data, 'utf8');
-    writer.write(buffer.length + 1, 16); // response length
-    writer.write(buffer.length, 8); // text length
-    buffer.forEach(function(c){
-      writer.write(c, 8);
+
+    // make sure that resource data is a an array of strings
+    var characterStrings = Array.isArray(record.data) ? record.data : [record.data];
+    // convert array of strings to array of buffers
+    var characterStringBuffers = characterStrings.map(function(characterString){
+      if(Buffer.isBuffer(characterString)){
+        return characterString;
+      }
+      if(typeof characterString === 'string'){
+        return Buffer.from(characterString, 'utf8');
+      }
+      return false;
+    }).filter(function(characterString){
+      // remove invalid values from the array
+      return characterString;
     });
+
+    // calculate byte length of resource strings
+    var bufferLength = characterStringBuffers.reduce(function(sum, characterStringBuffer){
+      return sum + characterStringBuffer.length;
+    }, 0);
+
+    // write string length to output
+    writer.write(bufferLength + characterStringBuffers.length, 16); // response length
+
+    // write each string to output
+    characterStringBuffers.forEach(function(buffer){
+      writer.write(buffer.length, 8); // text length
+      buffer.forEach(function(c){
+        writer.write(c, 8);
+      });
+    });
+
     return writer.toBuffer();
   }
 };
