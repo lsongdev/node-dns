@@ -656,9 +656,12 @@ Packet.Resource.SRV = {
 Packet.Resource.CAA = {
   encode: function(record, writer){
     writer = writer || new Packet.Writer();
-    writer.write(record.flags, 8)
-    writer.write((record.tag.length), 8)
-    var buffer = new Buffer(record.tag + record.value, 'utf8');
+
+    var buffer = new Buffer(record.tag + record.value, "utf8");
+    writer.write(2 + buffer.length, 16);
+    writer.write(record.flags, 8);
+    writer.write(record.tag.length, 8);
+
     buffer.forEach(function(c){
       writer.write(c, 8);
     });
