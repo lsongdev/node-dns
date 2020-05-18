@@ -1,6 +1,6 @@
 {
   "name": "dns2",
-  "version": "1.3.1",
+  "version": "1.3.2",
   "description": "A dns server and client implementation",
   "main": "index.js",
   "scripts": {
@@ -9,7 +9,10 @@
   "keywords": [
     "dns"
   ],
-  "author": "lsong",
+  "author": "Liu Song <hi@lsong.org>",
+  "contributors": [
+    "Andris Reinman <andris.reinman@gmail.com>"
+  ],
   "license": "MIT",
   "repository": {
     "type": "git",
