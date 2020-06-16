@@ -29,7 +29,7 @@ class DNS extends udp.Socket {
       timeout: 3,
       nameServers: [
         '8.8.8.8',
-        '114.114.114.114'
+        '1.1.1.1',
       ],
       rootServers: [
         'a', 'b', 'c', 'd', 'e', 'f',
@@ -59,18 +59,15 @@ class DNS extends udp.Socket {
   resolveAAAA(domain) {
     return this.resolve(domain, 'AAAA');
   }
-  resolveMX() {
+  resolveMX(domain) {
     return this.resolve(domain, 'MX');
   }
-  resolveCNAME() {
+  resolveCNAME(domain) {
     return this.resolve(domain, 'CNAME');
   }
 }
 
-/**
- * [Server description]
- * @type {[type]}
- */
+DNS.Client = DNS;
 DNS.Packet = Packet;
 DNS.Server = require('./server');
 DNS.createServer = function (options) {

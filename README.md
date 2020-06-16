@@ -16,20 +16,15 @@ $ npm install dns2
 Lookup any records available for the domain `lsong.org`.
 
 ```js
-const dns = require('dns2');
+const DNS = require('dns2');
 
-var packet = new dns.Packet();
+const dns = new DNS();
 
-packet.questions.push({
-  name : 'lsong.org',
-  type : dns.Packet.TYPE.ANY,
-  class: dns.Packet.CLASS.IN
-});
-
-dns.send(packet, function(err, res){
-  console.log(err, res);
-});
-
+(async () => {
+  const result = await dns.resolve('google.com')
+  console.log(result);
+  dns.close()
+})();
 ```
 
 ### Example Server
