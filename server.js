@@ -1,6 +1,7 @@
 const udp = require('dgram');
 const EventEmitter = require('events');
 const Packet = require('./packet');
+const { fstat, writeFileSync } = require('fs');
 /**
  * [Server description]
  * @docs https://tools.ietf.org/html/rfc1034
@@ -18,7 +19,7 @@ class Server extends EventEmitter {
     this.socket.on('message', this.parse.bind(this));
   }
   parse(buffer, rinfo) {
-    var request = Packet.parse(buffer);
+    const request = Packet.parse(buffer);
     this.emit('request', request, this.send.bind(this, rinfo), rinfo);
   }
   send(rinfo, message) {

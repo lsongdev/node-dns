@@ -3,7 +3,6 @@ const DNS = require('..');
 const dns = new DNS();
 
 (async () => {
-  const result = await dns.resolve('google.com')
-  console.log(result);
-  dns.close()
+  const result = await dns.resolveA('google.com');
+  console.log(result.answers);
 })();

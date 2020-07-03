@@ -1,15 +1,25 @@
 const udp = require('dgram');
+const assert = require('assert');
 const Packet = require('./packet');
+const { debuglog } = require('util');
+const { EventEmitter } = require('events');
 
-const createResolver = (client, address, port) => {
+const debug = debuglog('dns2');
+
+const createResolver = (address, port) => {
+  const client = new udp.Socket('udp4');
   return questions => {
     const query = new DNS.Packet();
+    query.header.id = (Math.random() * 1e4) | 0;
     query.questions = questions;
     return new Promise((resolve, reject) => {
-      client.once('message', message => {
+      client.once('message', function onMessage(message) {
+        client.close();
         const response = Packet.parse(message);
-        resolve(response.answers);
+        assert.equal(response.header.id, query.header.id);
+        resolve(response);
       });
+      debug('send', address, query.toBuffer());
       client.send(query.toBuffer(), port, address, err => err && reject(err));
     });
   }
@@ -20,16 +30,16 @@ const createResolver = (client, address, port) => {
  * @docs https://tools.ietf.org/html/rfc1034
  * @docs https://tools.ietf.org/html/rfc1035
  */
-class DNS extends udp.Socket {
+class DNS extends EventEmitter {
   constructor(options) {
-    super('udp4');
+    super();
     Object.assign(this, {
       port: 53,
       retries: 3,
       timeout: 3,
       nameServers: [
         '8.8.8.8',
-        '1.1.1.1',
+        '114.114.114.114',
       ],
       rootServers: [
         'a', 'b', 'c', 'd', 'e', 'f',
@@ -42,7 +52,7 @@ class DNS extends udp.Socket {
       questions = [questions];
     const { port, nameServers } = this;
     return Promise.race(nameServers.map(address => {
-      const resolve = createResolver(this, address, port);
+      const resolve = createResolver(address, port);
       return resolve(questions);
     }));
   }

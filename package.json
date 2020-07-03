@@ -1,6 +1,6 @@
 {
   "name": "dns2",
-  "version": "1.3.3",
+  "version": "1.3.5",
   "description": "A dns server and client implementation",
   "main": "index.js",
   "scripts": {
