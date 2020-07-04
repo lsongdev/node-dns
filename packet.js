@@ -528,6 +528,7 @@ Packet.Resource.NS = {
  * @type {Object}
  * @docs https://tools.ietf.org/html/rfc1035#section-3.3.1
  */
+Packet.Resource.PTR =
 Packet.Resource.CNAME = {
   decode: function(reader, length) {
     this.domain = Packet.Name.decode(reader);

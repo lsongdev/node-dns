@@ -21,9 +21,8 @@ const DNS = require('dns2');
 const dns = new DNS();
 
 (async () => {
-  const result = await dns.resolve('google.com')
-  console.log(result);
-  dns.close()
+  const result = await dns.resolveA('google.com');
+  console.log(result.answers);
 })();
 ```
 
@@ -34,19 +33,19 @@ Respond to any DNS request on UDP port 5353 with `8.8.8.8`, a Google Public DNS 
 ```js
 const dns = require('dns2');
 
-const server = dns.createServer(function(request,send){
-  
-  const response = new dns.Packet(request);
-  
-  response.header.qr = 1;
-  response.answers.push({
-    address: '8.8.8.8',
-    type: dns.Packet.TYPE.A,
-    class: dns.Packet.CLASS.IN
+const { Packet } = dns;
+
+const server = dns.createServer(function(request, send) {
+  const response = Packet.createResponseFromRequest(request);
+  const answer = new Packet.createResourceFromQuestion(request.questions[0], {
+    target: 'hermes2.jabber.org',
+    port: 8080,
+    weight: 30,
+    priority: 30
   });
-  
+  response.answers.push(answer);
   send(response);
-}).listen(5353);
+}).listen(5333);
 ```
 
 Then you can test your DNS server:
