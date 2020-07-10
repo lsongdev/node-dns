@@ -9,8 +9,8 @@
 
 + Server and Client
 + Lot of Type Supported
-+ UDP and TCP Supported
 + Extremely lightweight
++ DNS over UDP, TCP, HTTPS Supported
 
 ### Installation
 
@@ -75,6 +75,8 @@ will be found in `request.questions[0].name`.
 + [RFC-1034 - Domain Names - Concepts and Facilities](https://tools.ietf.org/html/rfc1034)
 + [RFC-1035 - Domain Names - Implementation and Specification](https://tools.ietf.org/html/rfc1035)
 + [RFC-2782 - A DNS RR for specifying the location of services (DNS SRV)](https://tools.ietf.org/html/rfc2782)
++ [RFC-7766 - DNS Transport over TCP - Implementation Requirements](https://tools.ietf.org/html/rfc7766)
++ [RFC-8484 - DNS Queries over HTTPS (DoH)](https://tools.ietf.org/html/rfc8484)
 
 ### Contributing
 

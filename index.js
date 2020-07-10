@@ -1,35 +1,10 @@
-const udp = require('dgram');
-const assert = require('assert');
-const { debuglog } = require('util');
-const EventEmitter = require('events');
 const {
   TCPServer,
   UDPServer,
   createTCPServer,
   createUDPServer,
 } = require('./server');
-const Packet = require('./packet');
-
-const debug = debuglog('dns2');
-
-const createResolver = (address, port) => {
-  const client = new udp.Socket('udp4');
-  return questions => {
-    const query = new DNS.Packet();
-    query.header.id = (Math.random() * 1e4) | 0;
-    query.questions = questions;
-    return new Promise((resolve, reject) => {
-      client.once('message', function onMessage(message) {
-        client.close();
-        const response = Packet.parse(message);
-        assert.equal(response.header.id, query.header.id);
-        resolve(response);
-      });
-      debug('send', address, query.toBuffer());
-      client.send(query.toBuffer(), port, address, err => err && reject(err));
-    });
-  }
-}
+const EventEmitter = require('events');
 
 /**
  * [DNS description]
@@ -57,13 +32,12 @@ class DNS extends EventEmitter {
    * query
    * @param {*} questions 
    */
-  query(questions) {
-    if (!Array.isArray(questions))
-      questions = [questions];
+  query(name, type, cls) {
     const { port, nameServers } = this;
+    const { Client: createResolver } = DNS;
     return Promise.race(nameServers.map(address => {
-      const resolve = createResolver(address, port);
-      return resolve(questions);
+      const resolve = createResolver({ dns: address, port });
+      return resolve(name, type, cls);
     }));
   }
   /**
@@ -73,11 +47,7 @@ class DNS extends EventEmitter {
    * @param {*} cls 
    */
   resolve(domain, type = 'ANY', cls = DNS.Packet.CLASS.IN) {
-    return this.query({
-      name: domain,
-      type: DNS.Packet.TYPE[type],
-      class: cls
-    });
+    return this.query(domain, DNS.Packet.TYPE[type], cls);
   }
   resolveA(domain) {
     return this.resolve(domain, 'A');
@@ -93,13 +63,17 @@ class DNS extends EventEmitter {
   }
 }
 
-DNS.Client = DNS;
-DNS.Packet = Packet;
 DNS.TCPServer = TCPServer;
 DNS.UDPServer = UDPServer;
 DNS.createServer = createUDPServer;
 DNS.createUDPServer = createUDPServer;
 DNS.createTCPServer = createTCPServer;
+
+DNS.DoT = require('./client/tcp');
+DNS.DoH = require('./client/doh');
+DNS.Client = require('./client/udp');
+DNS.Google = require('./client/google');
+DNS.Packet = require('./packet');
 
 module.exports = DNS;
 

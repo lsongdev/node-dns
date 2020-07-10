@@ -234,7 +234,7 @@ Packet.Header.prototype.toBuffer = function(writer) {
 Packet.Question = function(name, type, cls) {
   var defaults = {
     type : Packet.TYPE .ANY,
-    class: Packet.CLASS.ANY
+    class: Packet.CLASS.ANY,
   };
   if(typeof name === 'object') {
     for(var k in name)
@@ -702,5 +702,52 @@ Packet.createResourceFromQuestion = function(base, record) {
   Object.assign(resource, record);
   return resource;
 }
+
+Packet.readStream = socket => {
+  let chunks = [];
+  let chunklen = 0;
+  let received = false;
+  let expected = false;
+  return new Promise((resolve, reject) => {
+    const processMessage = () => {
+      if (received) return;
+      received = true;
+      const buffer = Buffer.concat(chunks, chunklen);
+      resolve(buffer.slice(2));
+    };
+    socket.on('end', processMessage);
+    socket.on('error', reject);
+    socket.on('readable', () => {
+      let chunk;
+      while ((chunk = socket.read()) !== null) {
+        chunks.push(chunk);
+        chunklen += chunk.length;
+      }
+      if (!expected && chunklen >= 2) {
+        if (chunks.length > 1) {
+          chunks = [Buffer.concat(chunks, chunklen)];
+        }
+        expected = chunks[0].readUInt16BE(0);
+      }
+
+      if (chunklen >= 2 + expected) {
+        processMessage();
+      }
+    });
+  });
+};
+
+/**
+ * DoH
+ * @docs https://tools.ietf.org/html/rfc8484
+ */
+Packet.prototype.toBase64URL = function() {
+  const buffer = this.toBuffer();
+  const base64 = buffer.toString('base64');
+  return base64
+    .replace(/=/g, "")
+    .replace(/\+/g, "-")
+    .replace(/\//g, "_");
+};
 
 module.exports = Packet;
