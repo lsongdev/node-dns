@@ -4,7 +4,7 @@
   "description": "A DNS Server and Client Implementation in Pure JavaScript with no dependencies.",
   "main": "index.js",
   "scripts": {
-    "test": "mocha "
+    "test": "node test"
   },
   "keywords": [
     "dns"
@@ -21,8 +21,5 @@
   "bugs": {
     "url": "https://github.com/song940/node-dns/issues"
   },
-  "homepage": "https://github.com/song940/node-dns#readme",
-  "devDependencies": {
-    "mocha": "*"
-  }
+  "homepage": "https://github.com/song940/node-dns#readme"
 }
