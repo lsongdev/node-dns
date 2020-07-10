@@ -1,8 +1,14 @@
 const udp = require('dgram');
 const assert = require('assert');
-const Packet = require('./packet');
 const { debuglog } = require('util');
-const { EventEmitter } = require('events');
+const EventEmitter = require('events');
+const {
+  TCPServer,
+  UDPServer,
+  createTCPServer,
+  createUDPServer,
+} = require('./server');
+const Packet = require('./packet');
 
 const debug = debuglog('dns2');
 
@@ -47,6 +53,10 @@ class DNS extends EventEmitter {
       ].map(x => `${x}.root-servers.net`)
     }, options);
   }
+  /**
+   * query
+   * @param {*} questions 
+   */
   query(questions) {
     if (!Array.isArray(questions))
       questions = [questions];
@@ -56,11 +66,17 @@ class DNS extends EventEmitter {
       return resolve(questions);
     }));
   }
-  resolve(domain, type = 'ANY') {
+  /**
+   * resolve
+   * @param {*} domain 
+   * @param {*} type 
+   * @param {*} cls 
+   */
+  resolve(domain, type = 'ANY', cls = DNS.Packet.CLASS.IN) {
     return this.query({
       name: domain,
       type: DNS.Packet.TYPE[type],
-      class: DNS.Packet.CLASS.IN
+      class: cls
     });
   }
   resolveA(domain) {
@@ -79,10 +95,11 @@ class DNS extends EventEmitter {
 
 DNS.Client = DNS;
 DNS.Packet = Packet;
-DNS.Server = require('./server');
-DNS.createServer = function (options) {
-  return new DNS.Server(options);
-};
+DNS.TCPServer = TCPServer;
+DNS.UDPServer = UDPServer;
+DNS.createServer = createUDPServer;
+DNS.createUDPServer = createUDPServer;
+DNS.createTCPServer = createTCPServer;
 
 module.exports = DNS;
 

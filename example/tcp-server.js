@@ -2,7 +2,9 @@ const dns = require('..');
 
 const { Packet } = dns;
 
-const server = dns.createServer((request, send, rinfo) => {
+const server = dns.createTCPServer();
+
+server.on('request', (request, send, client) => {
   const response = Packet.createResponseFromRequest(request);
   const answer = new Packet.createResourceFromQuestion(request.questions[0], {
     target: 'hermes2.jabber.org',
@@ -12,10 +14,6 @@ const server = dns.createServer((request, send, rinfo) => {
   });
   response.answers.push(answer);
   send(response);
-});
-
-server.on('request', (request, response, rinfo) => {
-  console.log(request.header.id, request.questions[0]);
 });
 
 server.listen(5333);

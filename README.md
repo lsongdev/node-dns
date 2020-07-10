@@ -3,7 +3,14 @@
 ![NPM version](https://img.shields.io/npm/v/dns2.svg?style=flat)
 [![Build Status](https://travis-ci.org/song940/node-dns.svg?branch=master)](https://travis-ci.org/song940/node-dns)
 
-> A DNS server and client implementation
+> A DNS Server and Client Implementation in Pure JavaScript with no dependencies.
+
+### Features
+
++ Server and Client
++ Lot of Type Supported
++ UDP and TCP Supported
++ Extremely lightweight
 
 ### Installation
 
@@ -27,8 +34,6 @@ const dns = new DNS();
 ```
 
 ### Example Server
-
-Respond to any DNS request on UDP port 5353 with `8.8.8.8`, a Google Public DNS server address.
 
 ```js
 const dns = require('dns2');
