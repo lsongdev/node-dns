@@ -36,27 +36,35 @@ const dns = new DNS();
 ### Example Server
 
 ```js
-const dns = require('dns2');
+const dns = require('..');
 
 const { Packet } = dns;
 
-const server = dns.createServer(function(request, send) {
+const server = dns.createServer((request, send, rinfo) => {
   const response = Packet.createResponseFromRequest(request);
-  const answer = new Packet.createResourceFromQuestion(request.questions[0], {
-    target: 'hermes2.jabber.org',
-    port: 8080,
-    weight: 30,
-    priority: 30
+  const [ question ] = request.questions;
+  const { name } = question;
+  response.answers.push({
+    name,
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
+    ttl: 300,
+    address: '8.8.8.8'
   });
-  response.answers.push(answer);
   send(response);
-}).listen(5333);
+});
+
+server.on('request', (request, response, rinfo) => {
+  console.log(request.header.id, request.questions[0]);
+});
+
+server.listen(5333);
 ```
 
 Then you can test your DNS server:
 
 ```bash
-$ dig @127.0.0.1 -p5353 lsong.org
+$ dig @127.0.0.1 -p5333 lsong.org
 ```
 
 Note that when implementing your own lookups, the contents of the query

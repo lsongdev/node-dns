@@ -4,13 +4,15 @@ const { Packet } = dns;
 
 const server = dns.createServer((request, send, rinfo) => {
   const response = Packet.createResponseFromRequest(request);
-  const answer = new Packet.createResourceFromQuestion(request.questions[0], {
-    target: 'hermes2.jabber.org',
-    port: 8080,
-    weight: 30,
-    priority: 30
+  const [ question ] = request.questions;
+  const { name } = question;
+  response.answers.push({
+    name,
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
+    ttl: 300,
+    address: '8.8.8.8'
   });
-  response.answers.push(answer);
   send(response);
 });
 
