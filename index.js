@@ -47,7 +47,7 @@ class DNS extends EventEmitter {
    * @param {*} cls 
    */
   resolve(domain, type = 'ANY', cls = DNS.Packet.CLASS.IN) {
-    return this.query(domain, DNS.Packet.TYPE[type], cls);
+    return this.query(domain, type, cls);
   }
   resolveA(domain) {
     return this.resolve(domain, 'A');
