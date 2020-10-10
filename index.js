@@ -32,12 +32,12 @@ class DNS extends EventEmitter {
    * query
    * @param {*} questions 
    */
-  query(name, type, cls) {
+  query(name, type, cls, clientIp) {
     const { port, nameServers } = this;
     const { Client: createResolver } = DNS;
     return Promise.race(nameServers.map(address => {
       const resolve = createResolver({ dns: address, port });
-      return resolve(name, type, cls);
+      return resolve(name, type, cls, clientIp);
     }));
   }
   /**
@@ -46,11 +46,11 @@ class DNS extends EventEmitter {
    * @param {*} type 
    * @param {*} cls 
    */
-  resolve(domain, type = 'ANY', cls = DNS.Packet.CLASS.IN) {
-    return this.query(domain, type, cls);
+  resolve(domain, type = 'ANY', cls = DNS.Packet.CLASS.IN, clientIp) {
+    return this.query(domain, type, cls, clientIp);
   }
-  resolveA(domain) {
-    return this.resolve(domain, 'A');
+  resolveA(domain, clientIp) {
+    return this.resolve(domain, 'A', undefined, clientIp);
   }
   resolveAAAA(domain) {
     return this.resolve(domain, 'AAAA');
