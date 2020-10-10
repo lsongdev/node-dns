@@ -88,6 +88,14 @@ Packet.CLASS = {
   HS : 0x04,
   ANY: 0xFF
 };
+/**
+ * [EDNS_OPTION_CODE description]
+ * @type {Object}
+ * @docs https://tools.ietf.org/html/rfc6891#section-6.1.2
+ */
+Packet.EDNS_OPTION_CODE = {
+  ECS: 0x08
+};
 
 /**
  * [uuid description]
@@ -661,15 +669,67 @@ Packet.Resource.SRV = {
   }
 };
 
-Packet.Resource.EDNS = {
-  decode(reader, length) {
-    return this;
-  },
-  encode(record, writer) {
-    return Buffer.alloc(0);
-  }
+Packet.Resource.EDNS = function(rdata) {
+  return {
+    type: Packet.TYPE['EDNS'],
+    class: 512, // Supported UDP Payload size
+    ttl: 0, // Extended RCODE and flags
+    rdata // Objects of type Packet.Resource.EDNS.*
+  };
 };
 
+Packet.Resource.EDNS.decode = function(reader, length) {
+  return this;
+};
+
+Packet.Resource.EDNS.encode = function(record, writer) {
+  const rdataWriter = new Packet.Writer();
+  for(let rdata of record.rdata) {
+    var encoder = Object.keys(Packet.EDNS_OPTION_CODE).filter(function(type) {
+      return rdata.ednsCode == Packet.EDNS_OPTION_CODE[ type ];
+    })[0];
+    if(encoder in Packet.Resource.EDNS && Packet.Resource.EDNS[ encoder ].encode) {
+      const w = new Packet.Writer();
+      Packet.Resource.EDNS[ encoder ].encode(rdata, w);
+      rdataWriter.write(rdata.ednsCode, 16);
+      rdataWriter.write(w.buffer.length / 8, 16);
+      rdataWriter.writeBuffer(w)
+    } else {
+      debug('node-dns > unknown EDNS rdata encoder %s(%j)', encoder, rdata.ednsCode);
+    }
+  }
+  writer = writer || new Packet.Writer();
+  writer.write(rdataWriter.buffer.length / 8, 16);
+  writer.writeBuffer(rdataWriter);
+  return writer.toBuffer();
+};
+
+Packet.Resource.EDNS.ECS = function(clientIp) {
+  const [ip, prefixLength] = clientIp.split('/');
+  const numPrefixLength = parseInt(prefixLength) || 32;
+  return {
+        ednsCode: Packet.EDNS_OPTION_CODE.ECS,
+        family: 1,
+        sourcePrefixLength: numPrefixLength,
+        scopePrefixLength: 0,
+        ip
+  };
+}
+
+Packet.Resource.EDNS.ECS.decode = function(reader, length) {
+  return this;
+}
+
+Packet.Resource.EDNS.ECS.encode = function(record, writer) {
+  const ip = record.ip.split('.').map( s => parseInt(s));
+  writer.write(record.family, 16);
+  writer.write(record.sourcePrefixLength, 8);
+  writer.write(record.scopePrefixLength, 8);
+  writer.write(ip[0], 8);
+  writer.write(ip[1], 8);
+  writer.write(ip[2], 8);
+  writer.write(ip[3], 8);
+}
 
 Packet.Resource.CAA = {
   encode: function(record, writer) {

@@ -186,3 +186,15 @@ test('Packet#encode array of character strings', function () {
 
   assert.equal(Packet.parse(response.toBuffer()).answers[0].data, dkim.join(''))
 });
+
+test('EDNS.ECS#encode', function () {
+  var query = new Packet.Resource.EDNS([
+    new Packet.Resource.EDNS.ECS('10.11.12.13/24')
+  ]);
+
+  let b = Packet.Resource.encode(query)
+  assert.deepEqual(b, Buffer.from([
+    0x00, 0x00, 0x29, 0x02, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x0c, 0x00, 0x08, 0x00, 0x08, 0x00,
+    0x01, 0x18, 0x00, 0x0a, 0x0b, 0x0c, 0x0d]))
+})
