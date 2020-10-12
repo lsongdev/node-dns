@@ -679,6 +679,28 @@ Packet.Resource.EDNS = function(rdata) {
 };
 
 Packet.Resource.EDNS.decode = function(reader, length) {
+  this.type = Packet.TYPE['EDNS'];
+  this.class = 512;
+  this.ttl = 0;
+  this.rdata = [];
+
+  while (length) {
+    const optionCode = reader.read(16);
+    const optionLength = reader.read(16); // In octet (https://tools.ietf.org/html/rfc6891#page-8)
+
+    const decoder = Object.keys(Packet.EDNS_OPTION_CODE).filter(function(type) {
+      return optionCode == Packet.EDNS_OPTION_CODE[ type ];
+    })[0];
+    if (decoder in Packet.Resource.EDNS && Packet.Resource.EDNS[ decoder ].decode) {
+      const rdata = Packet.Resource.EDNS[ decoder ].decode(reader, optionLength);
+      this.rdata.push(rdata);
+    } else {
+      reader.read(optionLength); // Ignore data that doesn't understand
+      debug('node-dns > unknown EDNS rdata decoder %s(%j)', decoder, optionCode);
+    }
+
+    length = length - 4 - optionLength;
+  }
   return this;
 };
 
@@ -717,7 +739,29 @@ Packet.Resource.EDNS.ECS = function(clientIp) {
 }
 
 Packet.Resource.EDNS.ECS.decode = function(reader, length) {
-  return this;
+  const rdata = {};
+  rdata.ednsCode = Packet.EDNS_OPTION_CODE.ECS;
+  rdata.family = reader.read(16);
+  rdata.sourcePrefixLength = reader.read(8);
+  rdata.scopePrefixLength = reader.read(8);
+  length -= 4;
+
+  if (rdata.family !== 1) {
+    debug('node-dns > unimplemented address family');
+    reader.read(length * 8); // Ignore data that doesn't understand
+    return rdata;
+  }
+
+  const ipv4Octets = [];
+  while (length--) {
+    const octet = reader.read(8);
+    ipv4Octets.push(octet);
+  }
+  while (ipv4Octets.length < 4) {
+    ipv4Octets.push(0);
+  }
+  rdata.ip = ipv4Octets.join('.');
+  return rdata;
 }
 
 Packet.Resource.EDNS.ECS.encode = function(record, writer) {
