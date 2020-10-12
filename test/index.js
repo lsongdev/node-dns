@@ -198,3 +198,39 @@ test('EDNS.ECS#encode', function () {
     0x00, 0x00, 0x0c, 0x00, 0x08, 0x00, 0x08, 0x00,
     0x01, 0x18, 0x00, 0x0a, 0x0b, 0x0c, 0x0d]))
 })
+
+test('EDNS#decode', function () {
+  const buffer = Buffer.from([0x00, 0x08, 0x00, 0x08, 0x00, 0x01, 0x18, 0x00, 0x0a, 0x0b, 0x0c, 0x0d]);
+  const reader = new Packet.Reader(buffer);
+  const record = Packet.Resource.EDNS.decode(reader, buffer.length);
+
+  assert.equal(record.rdata.length, 1);
+  assert.equal(record.rdata[0].ednsCode, 8);
+  assert.equal(record.rdata[0].family, 1);
+  assert.equal(record.rdata[0].sourcePrefixLength, 24);
+  assert.equal(record.rdata[0].scopePrefixLength, 0);
+  assert.equal(record.rdata[0].ip, '10.11.12.13');
+
+  const query = new Packet.Resource.EDNS([
+    new Packet.Resource.EDNS.ECS('10.20.0.0/16')
+  ]);
+  const encoded = Packet.Resource.encode(query);
+  const decoded = Packet.Resource.decode(encoded);
+  delete decoded.name;
+
+  assert.deepEqual(decoded, query);
+});
+
+test('EDNS#decode multiple', function () {
+  const query = new Packet.Resource.EDNS([
+    new Packet.Resource.EDNS.ECS('10.0.0.0/8'),
+    new Packet.Resource.EDNS.ECS('10.9.0.0/16'),
+    new Packet.Resource.EDNS.ECS('10.9.8.0/24'),
+    new Packet.Resource.EDNS.ECS('10.9.8.7/32')
+  ]);
+  const encoded = Packet.Resource.encode(query);
+  const decoded = Packet.Resource.decode(encoded);
+  delete decoded.name;
+
+  assert.deepEqual(decoded, query);
+});
