@@ -28,7 +28,18 @@ module.exports = ({ dns = '8.8.8.8', port = 53 } = {}) => {
         resolve(response);
       });
       debug('send', dns, query.toBuffer());
-      client.send(query.toBuffer(), port, dns, err => err && reject(err));
+      
+      if(Array.isArray(dns))
+      {
+        for(const _dns of dns)
+        {
+          client.send(query.toBuffer(), port, _dns, err => err && reject(err));
+        }
+      }
+      else
+      {
+         client.send(query.toBuffer(), port, dns, err => err && reject(err));
+      }
     });
   }
 };
