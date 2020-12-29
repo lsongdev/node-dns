@@ -1,8 +1,10 @@
 const {
   TCPServer,
   UDPServer,
+  DOHServer,
   createTCPServer,
   createUDPServer,
+  createDOHServer,
 } = require('./server');
 const EventEmitter = require('events');
 
@@ -65,9 +67,11 @@ class DNS extends EventEmitter {
 
 DNS.TCPServer = TCPServer;
 DNS.UDPServer = UDPServer;
+DNS.DOHServer = DOHServer;
 DNS.createServer = createUDPServer;
 DNS.createUDPServer = createUDPServer;
 DNS.createTCPServer = createTCPServer;
+DNS.createDOHServer = createDOHServer;
 
 DNS.DoT = require('./client/tcp');
 DNS.DoH = require('./client/doh');
