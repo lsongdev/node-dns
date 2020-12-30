@@ -40,7 +40,7 @@ const dns = require('..');
 
 const { Packet } = dns;
 
-const server = dns.createServer((request, send, rinfo) => {
+const server = dns.createUDPServer((request, send, rinfo) => {
   const response = Packet.createResponseFromRequest(request);
   const [ question ] = request.questions;
   const { name } = question;
@@ -69,14 +69,6 @@ $ dig @127.0.0.1 -p5333 lsong.org
 
 Note that when implementing your own lookups, the contents of the query
 will be found in `request.questions[0].name`.
-
-### API
-
-- dns2.createServer()
-- dns2.lookup()
-- dns2.Packet()
-- dns2.Client()
-- dns2.Server()
 
 ### Relevant Specifications
 

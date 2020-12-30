@@ -1,6 +1,6 @@
-const { DoH } = require('../..');
+const { DOHClient } = require('../..');
 
-const resolve = DoH({
+const resolve = DOHClient({
   dns: '1.1.1.1'
 });
 
