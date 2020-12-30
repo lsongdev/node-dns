@@ -1,4 +1,4 @@
-const dns = require('..');
+const dns = require('../..');
 
 const { Packet } = dns;
 

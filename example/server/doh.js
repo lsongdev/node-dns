@@ -1,4 +1,4 @@
-const dns = require('..');
+const dns = require('../..');
 const path = require('path');
 const fs = require('fs');
 

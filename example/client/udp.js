@@ -1,4 +1,4 @@
-const DNS = require('..');
+const DNS = require('../..');
 
 const dns = new DNS();
 

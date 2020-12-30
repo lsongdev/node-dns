@@ -1,4 +1,4 @@
-const { DoT } = require('..');
+const { DoT } = require('../..');
 
 const resolve = DoT({
   dns: '1.1.1.1'
