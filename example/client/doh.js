@@ -1,4 +1,4 @@
-const { DoH } = require('..');
+const { DoH } = require('../..');
 
 const resolve = DoH({
   dns: '1.1.1.1'

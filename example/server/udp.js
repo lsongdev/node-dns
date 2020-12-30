@@ -1,8 +1,8 @@
-const dns = require('..');
+const dns = require('../..');
 
 const { Packet } = dns;
 
-const server = dns.createServer((request, send, rinfo) => {
+const server = dns.createUDPServer((request, send, rinfo) => {
   const response = Packet.createResponseFromRequest(request);
   const [ question ] = request.questions;
   const { name } = question;
