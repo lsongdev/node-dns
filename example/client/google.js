@@ -1,4 +1,4 @@
-const { Google: resolve } = require('../..');
+const { GoogleClient: resolve } = require('../..');
 
 (async () => {
 

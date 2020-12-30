@@ -1,6 +1,6 @@
-const { DoT } = require('../..');
+const { TCPClient } = require('../..');
 
-const resolve = DoT({
+const resolve = TCPClient({
   dns: '1.1.1.1'
 });
 

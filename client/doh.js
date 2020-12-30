@@ -22,7 +22,7 @@ const readStream = stream => {
  * @docs https://tools.ietf.org/html/rfc8484
  * @param {*} param0 
  */
-const DoH = ({ dns } = {}) => {
+const DOHClient = ({ dns } = {}) => {
   return (name, type = 'A', cls = Packet.CLASS.IN) => {
     const packet = new Packet();
     packet.questions.push({
@@ -39,4 +39,4 @@ const DoH = ({ dns } = {}) => {
   };
 };
 
-module.exports = DoH;
+module.exports = DOHClient;
