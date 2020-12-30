@@ -4,7 +4,10 @@
   "description": "A DNS Server and Client Implementation in Pure JavaScript with no dependencies.",
   "main": "index.js",
   "scripts": {
-    "test": "node test"
+    "test": "node test",
+    "example-server-udp": "node example/server/udp.js",
+    "example-server-tcp": "node example/server/tcp.js",
+    "example-server-doh": "node example/server/doh.js"
   },
   "keywords": [
     "dns"

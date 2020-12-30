@@ -68,15 +68,16 @@ class DNS extends EventEmitter {
 DNS.TCPServer = TCPServer;
 DNS.UDPServer = UDPServer;
 DNS.DOHServer = DOHServer;
-DNS.createServer = createUDPServer;
+
 DNS.createUDPServer = createUDPServer;
 DNS.createTCPServer = createTCPServer;
 DNS.createDOHServer = createDOHServer;
 
-DNS.DoT = require('./client/tcp');
-DNS.DoH = require('./client/doh');
-DNS.Client = require('./client/udp');
-DNS.Google = require('./client/google');
+DNS.TCPClient = require('./client/tcp');
+DNS.DOHClient = require('./client/doh');
+DNS.UDPClient = require('./client/udp');
+DNS.GoogleClient = require('./client/google');
+
 DNS.Packet = require('./packet');
 
 module.exports = DNS;
