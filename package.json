@@ -7,7 +7,12 @@
     "test": "node test",
     "example-server-udp": "node example/server/udp.js",
     "example-server-tcp": "node example/server/tcp.js",
-    "example-server-doh": "node example/server/doh.js"
+    "example-server-doh": "node example/server/doh.js",
+    "example-client-doh": "node example/client/doh.js",
+    "example-client-udp": "node example/client/udp.js",
+    "example-client-tcp": "node example/client/tcp.js",
+    "example-client-google": "node example/client/google.js",
+    "example-client-udp-subnet": "node example/client/udp-subnet.js"
   },
   "keywords": [
     "dns"
