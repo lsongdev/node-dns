@@ -63,6 +63,9 @@ class DNS extends EventEmitter {
   resolveCNAME(domain) {
     return this.resolve(domain, 'CNAME');
   }
+  resolvePTR(domain) {
+    return this.resolve(domain, 'PTR');
+  }
 }
 
 DNS.TCPServer = TCPServer;
