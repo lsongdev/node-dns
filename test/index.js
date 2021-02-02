@@ -123,6 +123,14 @@ test('Packet#encode', function () {
     domain: 'sfo1.lsong.org'
   });
 
+  response.answers.push({
+    name: 'lsong.org',
+    type: Packet.TYPE.PTR,
+    class: Packet.CLASS.IN,
+    ttl: 300,
+    domain: 'sfo1.lsong.org'
+  });
+
   response.authorities.push({
     name: 'lsong.org',
     type: Packet.TYPE.MX,
