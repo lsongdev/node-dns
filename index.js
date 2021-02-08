@@ -20,6 +20,7 @@ class DNS extends EventEmitter {
       port: 53,
       retries: 3,
       timeout: 3,
+      resolverProtocol: 'UDP',
       nameServers: [
         '8.8.8.8',
         '114.114.114.114',
@@ -35,8 +36,8 @@ class DNS extends EventEmitter {
    * @param {*} questions 
    */
   query(name, type, cls, clientIp) {
-    const { port, nameServers } = this;
-    const { UDPClient: createResolver } = DNS;
+    const { port, nameServers, resolverProtocol = 'UDP' } = this;
+    const createResolver = DNS[resolverProtocol + 'Client'];
     return Promise.race(nameServers.map(address => {
       const resolve = createResolver({ dns: address, port });
       return resolve(name, type, cls, clientIp);
