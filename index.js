@@ -36,7 +36,7 @@ class DNS extends EventEmitter {
    */
   query(name, type, cls, clientIp) {
     const { port, nameServers } = this;
-    const { Client: createResolver } = DNS;
+    const { UDPClient: createResolver } = DNS;
     return Promise.race(nameServers.map(address => {
       const resolve = createResolver({ dns: address, port });
       return resolve(name, type, cls, clientIp);
