@@ -1,6 +1,8 @@
 const { TCPClient } = require('../..');
 
-const resolve = TCPClient();
+const resolve = TCPClient({
+  dns: '1.1.1.1'
+});
 
 (async () => {
   const response = await resolve('google.com')
