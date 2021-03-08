@@ -18,14 +18,78 @@
 $ npm install dns2
 ```
 
-### Example Client
+### DNS Client (default UDP)
 
-Lookup any records available for the domain `lsong.org`.
+Lookup any records available for the domain `lsong.org`. 
+DNS client will use UDP by default.
 
 ```js
 const DNS = require('dns2');
 
 const dns = new DNS();
+
+(async () => {
+  const result = await dns.resolveA('google.com');
+  console.log(result.answers);
+})();
+```
+
+Another way to instanciate dns2 UDP Client:
+
+```js
+const { UDPClient } = require('../..');
+
+const resolve = UDPClient();
+
+(async () => {
+  const response = await resolve('google.com')
+  console.log(response.answers);
+})();
+```
+
+### DNS Client (TCP)
+
+Lookup any records available for the domain `lsong.org`. By default, DNS requests will use UDP.
+
+```js
+const { TCPClient } = require('../..');
+
+const resolve = TCPClient();
+
+(async () => {
+  const result = await dns.resolveA('google.com');
+  console.log(result.answers);
+})();
+```
+
+### Custom DNS Server
+
+You can pass your own DNS Server.
+
+```js
+const { TCPClient } = require('../..');
+
+const resolve = TCPClient({
+  dns: '1.1.1.1'
+});
+
+(async () => {
+  const result = await dns.resolveA('google.com');
+  console.log(result.answers);
+})();
+```
+
+### System DNS Server
+
+You can use the first DNS server from your OS with native node dns.
+
+```js
+const dns = require('dns');
+const { TCPClient } = require('../..');
+
+const resolve = TCPClient({
+  dns: dns.getServers()[0]
+});
 
 (async () => {
   const result = await dns.resolveA('google.com');
