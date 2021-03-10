@@ -26,12 +26,20 @@ DNS client will use UDP by default.
 ```js
 const DNS = require('dns2');
 
-const dns = new DNS();
+const options = {};
+const dns = new DNS(options);
 
 (async () => {
   const result = await dns.resolveA('google.com');
   console.log(result.answers);
 })();
+```
+
+Below the list of options you can override :
+```
+dns: dns server address (string),
+port: dns server port (number),
+recursive: Recursion Desired flag (default true, since > v1.4.2)
 ```
 
 Another way to instanciate dns2 UDP Client:
@@ -62,7 +70,7 @@ const resolve = TCPClient();
 })();
 ```
 
-### Custom DNS Server
+### Client Custom DNS Server
 
 You can pass your own DNS Server.
 
