@@ -21,6 +21,9 @@ module.exports = ({ dns = '1.1.1.1', port = 53, recursive = true} = {}) => {
     const client = tcp.connect({ host: dns, port });
     client.end(Buffer.concat([len, message]));
     const data = await Packet.readStream(client);
+    if (!data.length) {
+      throw new Error('Empty TCP response');
+    }
     return Packet.parse(data);
   }
 };

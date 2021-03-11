@@ -65,8 +65,14 @@ const { TCPClient } = require('../..');
 const resolve = TCPClient();
 
 (async () => {
-  const result = await dns.resolveA('google.com');
-  console.log(result.answers);
+  try {
+    const response = await resolve('lsong.org')
+    console.log(response.answers);
+  } catch(error) {
+    // some DNS servers (i.e cloudflare 1.1.1.1, 1.0.0.1) 
+    // may send an empty response when using TCP
+    console.log(error);
+  }
 })();
 ```
 
