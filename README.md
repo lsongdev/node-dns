@@ -24,7 +24,7 @@ Lookup any records available for the domain `lsong.org`.
 DNS client will use UDP by default.
 
 ```js
-const DNS = require('dns2');
+const dns2 = require('dns2');
 
 const options = {
   // available options
@@ -32,7 +32,7 @@ const options = {
   // port: dns server port (number),
   // recursive: Recursion Desired flag (boolean, default true, since > v1.4.2)
 };
-const dns = new DNS(options);
+const dns = new dns2(options);
 
 (async () => {
   const result = await dns.resolveA('google.com');
