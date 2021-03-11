@@ -5,27 +5,26 @@ const { debuglog } = require('util');
 
 const debug = debuglog('dns2');
 
-module.exports = ({ dns = '8.8.8.8', port = 53, recursive = true } = {}) => {
-  return (name, type = 'A', cls = Packet.CLASS.IN, clientIp) => {
+module.exports = ({ dns = '8.8.8.8', port = 53, socketType = 'udp4' } = {}) => {
+  return (name, type = 'A', cls = Packet.CLASS.IN, { clientIp, recursive = true } = {}) => {
     const query = new Packet();
     query.header.id = (Math.random() * 1e4) | 0;
 
     // see https://github.com/song940/node-dns/issues/29
-    if(recursive) {
+    if (recursive) {
       query.header.rd = 1;
     }
-
+    if (clientIp) {
+      query.additionals.push(Packet.Resource.EDNS([
+        Packet.Resource.EDNS.ECS(clientIp)
+      ]));
+    };
     query.questions.push({
       name,
       class: cls,
       type: Packet.TYPE[type],
     });
-    if(clientIp) {
-      query.additionals.push(Packet.Resource.EDNS([
-        Packet.Resource.EDNS.ECS(clientIp)
-      ]));
-    };
-    const client = new udp.Socket('udp4');
+    const client = new udp.Socket(socketType);
     return new Promise((resolve, reject) => {
       client.once('message', function onMessage(message) {
         client.close();

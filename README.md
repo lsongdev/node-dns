@@ -24,10 +24,15 @@ Lookup any records available for the domain `lsong.org`.
 DNS client will use UDP by default.
 
 ```js
-const DNS = require('dns2');
+const dns2 = require('dns2');
 
-const options = {};
-const dns = new DNS(options);
+const options = {
+  // available options
+  // dns: dns server ip address or hostname (string),
+  // port: dns server port (number),
+  // recursive: Recursion Desired flag (boolean, default true, since > v1.4.2)
+};
+const dns = new dns2(options);
 
 (async () => {
   const result = await dns.resolveA('google.com');
@@ -35,17 +40,10 @@ const dns = new DNS(options);
 })();
 ```
 
-Below the list of options you can override :
-```
-dns: dns server address (string),
-port: dns server port (number),
-recursive: Recursion Desired flag (default true, since > v1.4.2)
-```
-
 Another way to instanciate dns2 UDP Client:
 
 ```js
-const { UDPClient } = require('../..');
+const { UDPClient } = require('dns2');
 
 const resolve = UDPClient();
 
@@ -60,7 +58,7 @@ const resolve = UDPClient();
 Lookup any records available for the domain `lsong.org`. By default, DNS requests will use UDP.
 
 ```js
-const { TCPClient } = require('../..');
+const { TCPClient } = require('dns2');
 
 const resolve = TCPClient();
 
@@ -81,15 +79,19 @@ const resolve = TCPClient();
 You can pass your own DNS Server.
 
 ```js
-const { TCPClient } = require('../..');
+const { TCPClient } = require('dns2');
 
 const resolve = TCPClient({
   dns: '1.1.1.1'
 });
 
 (async () => {
-  const result = await dns.resolveA('google.com');
-  console.log(result.answers);
+  try {
+    const result = await resolve('google.com');
+    console.log(result.answers);
+  } catch(error) {
+    console.log(error);
+  }
 })();
 ```
 
@@ -99,26 +101,30 @@ You can use the first DNS server from your OS with native node dns.
 
 ```js
 const dns = require('dns');
-const { TCPClient } = require('../..');
+const { TCPClient } = require('dns2');
 
 const resolve = TCPClient({
   dns: dns.getServers()[0]
 });
 
 (async () => {
-  const result = await dns.resolveA('google.com');
-  console.log(result.answers);
+  try {
+    const result = await resolve('google.com');
+    console.log(result.answers);
+  } catch(error) {
+    console.log(error);
+  }
 })();
 ```
 
 ### Example Server
 
 ```js
-const dns = require('..');
+const dns2 = require('dns2');
 
-const { Packet } = dns;
+const { Packet } = dns2;
 
-const server = dns.createUDPServer((request, send, rinfo) => {
+const server = dns2.createUDPServer((request, send, rinfo) => {
   const response = Packet.createResponseFromRequest(request);
   const [ question ] = request.questions;
   const { name } = question;

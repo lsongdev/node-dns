@@ -1,14 +1,19 @@
 const tcp = require('net');
 const Packet = require('../packet');
 
-module.exports = ({ dns = '1.1.1.1', port = 53, recursive = true} = {}) => {
-  return async (name, type = 'A', cls = Packet.CLASS.IN) => {
+module.exports = ({ dns = '1.1.1.1', port = 53 } = {}) => {
+  return async (name, type = 'A', cls = Packet.CLASS.IN, { clientIp, recursive = true } = {}) => {
     const packet = new Packet();
 
     // see https://github.com/song940/node-dns/issues/29
-    if(recursive) {
-      packet.header.rd = 1;
+    if (recursive) {
+      query.header.rd = 1;
     }
+    if (clientIp) {
+      query.additionals.push(Packet.Resource.EDNS([
+        Packet.Resource.EDNS.ECS(clientIp)
+      ]));
+    };
 
     packet.questions.push({
       name,

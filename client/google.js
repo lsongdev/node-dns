@@ -15,12 +15,13 @@ const readStream = stream => {
   });
 };
 
-const resolve = (name, type = 'ANY') => {
-  return Promise
-    .resolve()
-    .then(() => get(`https://dns.google.com/resolve?name=${name}&type=${type}`))
-    .then(readStream)
-    .then(JSON.parse)
-};
+const GoogleClient = ({ }) =>
+  (name, type = 'ANY') => {
+    return Promise
+      .resolve()
+      .then(() => get(`https://dns.google.com/resolve?name=${name}&type=${type}`))
+      .then(readStream)
+      .then(JSON.parse)
+  };
 
-module.exports = resolve;
+module.exports = GoogleClient;
