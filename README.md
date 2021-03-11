@@ -88,8 +88,12 @@ const resolve = TCPClient({
 });
 
 (async () => {
-  const result = await resolve('google.com');
-  console.log(result.answers);
+  try {
+    const result = await resolve('google.com');
+    console.log(result.answers);
+  } catch(error) {
+    console.log(error);
+  }
 })();
 ```
 
@@ -106,8 +110,12 @@ const resolve = TCPClient({
 });
 
 (async () => {
-  const result = await dns.resolveA('google.com');
-  console.log(result.answers);
+  try {
+    const result = await resolve('google.com');
+    console.log(result.answers);
+  } catch(error) {
+    console.log(error);
+  }
 })();
 ```
 
