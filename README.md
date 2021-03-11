@@ -88,7 +88,7 @@ const resolve = TCPClient({
 });
 
 (async () => {
-  const result = await dns.resolveA('google.com');
+  const result = await resolve('google.com');
   console.log(result.answers);
 })();
 ```
