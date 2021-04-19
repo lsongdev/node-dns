@@ -13,7 +13,7 @@ const readStream = stream => {
   return new Promise((resolve, reject) => {
     stream
       .on('error', reject)
-      .on('data', chunk => buffer.push(chunk)) 
+      .on('data', chunk => buffer.push(chunk))
       .on('end', () => resolve(Buffer.concat(buffer)));
   })
 };
@@ -23,8 +23,17 @@ const readStream = stream => {
  * @param {*} param0 
  */
 const DOHClient = ({ dns } = {}) => {
-  return (name, type = 'A', cls = Packet.CLASS.IN) => {
+  return (name, type = 'A', cls = Packet.CLASS.IN, { clientIp, recursive = true } = {}) => {
     const packet = new Packet();
+    // see https://github.com/song940/node-dns/issues/29
+    if (recursive) {
+      packet.header.rd = 1;
+    }
+    if (clientIp) {
+      query.additionals.push(Packet.Resource.EDNS([
+        Packet.Resource.EDNS.ECS(clientIp)
+      ]));
+    };
     packet.questions.push({
       name,
       class: cls,
