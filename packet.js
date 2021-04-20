@@ -136,6 +136,20 @@ Packet.parse = function(buffer) {
 };
 
 /**
+ * recursive
+ */
+Object.defineProperty(Packet.prototype, 'recursive', {
+  enumerable: true,
+  configurable: true,
+  get() {
+    return !!this.header.rd;
+  },
+  set(yn) {
+    return this.header.rd = +yn;
+  },
+});
+
+/**
  * [toBuffer description]
  * @return {[type]} [description]
  */
