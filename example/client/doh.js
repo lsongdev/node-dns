@@ -1,5 +1,7 @@
 const { DOHClient } = require('../..');
 
+process.env.NODE_TLS_REJECT_UNAUTHORIZED = '0';
+
 const resolve = DOHClient({
   dns: '1.1.1.1'
 });

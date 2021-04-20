@@ -175,7 +175,7 @@ will be found in `request.questions[0].name`.
 
 ### MIT license
 
-Copyright (c) 2016 lsong
+Copyright (c) 2016 LIU SONG <song940@gmail.com> & [contributors](https://github.com/song940/node-dns/graphs/contributors).
 
 Permission is hereby granted, free of charge, to any person obtaining a copy
 of this software and associated documentation files (the "Software"), to deal
