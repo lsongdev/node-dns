@@ -1,7 +1,7 @@
 # dns2 
 
 ![NPM version](https://img.shields.io/npm/v/dns2.svg?style=flat)
-[![Build Status](https://travis-ci.org/song940/node-dns.svg?branch=master)](https://travis-ci.org/song940/node-dns)
+[![Node.js CI](https://github.com/song940/node-dns/actions/workflows/node.js.yml/badge.svg)](https://github.com/song940/node-dns/actions/workflows/node.js.yml)
 
 > A DNS Server and Client Implementation in Pure JavaScript with no dependencies.
 
