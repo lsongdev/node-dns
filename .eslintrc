@@ -1,0 +1,16 @@
+{
+  "extends": "semistandard",
+  "rules": {
+    "space-before-function-paren": ["error", "never"],
+    "no-multi-spaces": ["error"],
+    "array-bracket-spacing": ["error", "always"],
+    "key-spacing": ["error", {
+      "align": {
+        "beforeColon": true,
+        "afterColon": true,
+        "on": "colon"
+      }
+    }],
+    "comma-dangle": ["error", "always-multiline"]
+  }
+}

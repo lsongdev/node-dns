@@ -1,8 +1,8 @@
 const http = require('http');
 const https = require('https');
-const { parse } = require('url');
+const { URL } = require('url');
 const Packet = require('../packet');
-const EventEmitter = require("events");
+const EventEmitter = require('events');
 const { debuglog } = require('util');
 
 const debug = debuglog('dns2-server');
@@ -23,8 +23,8 @@ const readStream = stream => new Promise((resolve, reject) => {
   let buffer = '';
   stream
     .on('error', reject)
-    .on('data', chunk => buffer += chunk)
-    .on('end', () => resolve(buffer))
+    .on('data', chunk => { buffer += chunk; })
+    .on('end', () => resolve(buffer));
 });
 
 class Server extends EventEmitter {
@@ -35,64 +35,66 @@ class Server extends EventEmitter {
     this.server.on('request', this.handleRequest.bind(this));
     return this;
   }
+
   async handleRequest(client, res) {
     const { method, url, headers } = client;
-    const { pathname, query } = parse(url, true);
+    const { pathname, query } = new URL(url, 'http://unused/');
     // debug
     debug('request', method, url);
     // We are only handling get and post as reqired by rfc
-    if ((method != "GET" && method != "POST")) {
-      res.writeHead(405, { "Content-Type": "text/plain" });
-      res.write("405 Method not allowed\n");
+    if ((method !== 'GET' && method !== 'POST')) {
+      res.writeHead(405, { 'Content-Type': 'text/plain' });
+      res.write('405 Method not allowed\n');
       res.end();
       return;
     }
     // Check so the uri is correct
-    if (pathname != "/dns-query") {
-      res.writeHead(404, { "Content-Type": "text/plain" });
-      res.write("404 Not Found\n");
+    if (pathname !== '/dns-query') {
+      res.writeHead(404, { 'Content-Type': 'text/plain' });
+      res.write('404 Not Found\n');
       res.end();
       return;
     }
     // Make sure the requestee is requesting the correct content type
-    const contentType = headers['accept'];
-    if (contentType != "application/dns-message") {
-      res.writeHead(400, { "Content-Type": "text/plain" });
-      res.write("400 Bad Request: Illegal content type\n");
+    const contentType = headers.accept;
+    if (contentType !== 'application/dns-message') {
+      res.writeHead(400, { 'Content-Type': 'text/plain' });
+      res.write('400 Bad Request: Illegal content type\n');
       res.end();
       return;
     }
     let queryData;
-    if (method == 'GET') {
+    if (method === 'GET') {
       // Parse query string for the request data
       const { dns } = query;
       if (!dns) {
-        res.writeHead(400, { "Content-Type": "text/plain" });
-        res.write("400 Bad Request: No query defined\n");
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.write('400 Bad Request: No query defined\n');
         res.end();
         return;
       }
       // Decode from Base64Url Encoding
       const base64 = decodeBase64URL(dns);
       if (!base64) {
-        res.writeHead(400, { "Content-Type": "text/plain" });
-        res.write("400 Bad Request: Invalid query data\n");
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.write('400 Bad Request: Invalid query data\n');
         res.end();
         return;
       }
       // Decode Base64 to buffer
       queryData = Buffer.from(base64, 'base64');
     } else if (method === 'POST') {
-      queryData = await readStream(req);
+      queryData = await readStream(client);
     }
     // Parse DNS query and Raise event.
     const message = Packet.parse(queryData);
     this.emit('request', message, this.response.bind(this, res), client);
   }
+
   /**
    * Send of the response to the client
-   * @param {*} res 
-   * @param {*} message 
+   * @param {*} res
+   * @param {*} message
    */
   response(res, message) {
     debug('response');
@@ -100,10 +102,11 @@ class Server extends EventEmitter {
     res.writeHead(200);
     res.end(message.toBuffer());
   }
+
   /**
    * listen
-   * @param {*} port 
-   * @returns 
+   * @param {*} port
+   * @returns
    */
   listen(port) {
     return this.server.listen(port || this.port, () => {

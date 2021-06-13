@@ -1,11 +1,11 @@
 const { inspect } = require('util');
 /**
  * super tiny testing framework
- * 
+ *
  * @author Liu song <hi@lsong.org>
  * @github https://github.com/song940
  */
-const test = async (title, fn) => {
+const test = async(title, fn) => {
   try {
     await fn();
     console.log(color(` ✔  ${title}`, 32));
@@ -21,7 +21,7 @@ const test = async (title, fn) => {
 };
 
 function color(str, c) {
-  return "\x1b[" + c + "m" + str + "\x1b[0m";
-};
+  return '\x1b[' + c + 'm' + str + '\x1b[0m';
+}
 
 module.exports = test;

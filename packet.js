@@ -17,32 +17,32 @@ const debug = debuglog('dns2');
  *   <-W--W--W-----Z-----C--N>|<----------->|
  */
 function Packet(data) {
-  this.header      = {};
-  this.questions   = [];
-  this.answers     = [];
+  this.header = {};
+  this.questions = [];
+  this.answers = [];
   this.authorities = [];
   this.additionals = [];
-  if(data instanceof Packet) {
+  if (data instanceof Packet) {
     return data;
-  } else if(data instanceof Packet.Header) {
+  } else if (data instanceof Packet.Header) {
     this.header = data;
-  } else if(data instanceof Packet.Question) {
+  } else if (data instanceof Packet.Question) {
     this.questions.push(data);
-  } else if(data instanceof Packet.Resource) {
+  } else if (data instanceof Packet.Resource) {
     this.answers.push(data);
-  } else if(typeof data === 'string') {
+  } else if (typeof data === 'string') {
     this.questions.push(data);
-  } else if(typeof data === 'object') {
-    var type = ({}).toString.call(data).match(/\[object (\w+)\]/)[1];
-    if(type === 'Array') {
+  } else if (typeof data === 'object') {
+    const type = ({}).toString.call(data).match(/\[object (\w+)\]/)[1];
+    if (type === 'Array') {
       this.questions = data;
     }
-    if(type === 'Object') {
+    if (type === 'Object') {
       this.header = data;
     }
   }
   return this;
-};
+}
 
 /**
  * [QUERY_TYPE description]
@@ -82,11 +82,11 @@ Packet.TYPE = {
  * @docs https://tools.ietf.org/html/rfc1035#section-3.2.4
  */
 Packet.CLASS = {
-  IN : 0x01,
-  CS : 0x02,
-  CH : 0x03,
-  HS : 0x04,
-  ANY: 0xFF
+  IN  : 0x01,
+  CS  : 0x02,
+  CH  : 0x03,
+  HS  : 0x04,
+  ANY : 0xFF,
 };
 /**
  * [EDNS_OPTION_CODE description]
@@ -94,7 +94,7 @@ Packet.CLASS = {
  * @docs https://tools.ietf.org/html/rfc6891#section-6.1.2
  */
 Packet.EDNS_OPTION_CODE = {
-  ECS: 0x08
+  ECS: 0x08,
 };
 
 /**
@@ -115,19 +115,19 @@ Packet.parse = function(buffer) {
   const reader = new Packet.Reader(buffer);
   packet.header = Packet.Header.parse(reader);
   ([ // props             parser              count
-    [ 'questions'   , Packet.Question, packet.header.qdcount ],
-    [ 'answers'     , Packet.Resource, packet.header.ancount ],
-    [ 'authorities' , Packet.Resource, packet.header.nscount ],
-    [ 'additionals' , Packet.Resource, packet.header.arcount ]
+    [ 'questions', Packet.Question, packet.header.qdcount ],
+    [ 'answers', Packet.Resource, packet.header.ancount ],
+    [ 'authorities', Packet.Resource, packet.header.nscount ],
+    [ 'additionals', Packet.Resource, packet.header.arcount ],
   ]).forEach(function(def) {
-    var section = def[0];
-    var decoder = def[1];
-    var count   = def[2];
-    while(count--) {
+    const section = def[0];
+    const decoder = def[1];
+    let count = def[2];
+    while (count--) {
       try {
-        packet[ section ] = packet[ section ] || [];
-        packet[ section ].push( decoder.parse(reader) );
-      } catch(e) {
+        packet[section] = packet[section] || [];
+        packet[section].push(decoder.parse(reader));
+      } catch (e) {
         debug('node-dns > parse %s error:', section, e.message);
       }
     }
@@ -139,13 +139,14 @@ Packet.parse = function(buffer) {
  * recursive
  */
 Object.defineProperty(Packet.prototype, 'recursive', {
-  enumerable: true,
-  configurable: true,
+  enumerable   : true,
+  configurable : true,
   get() {
     return !!this.header.rd;
   },
   set(yn) {
-    return this.header.rd = +yn;
+    this.header.rd = +yn;
+    return this.header.rd;
   },
 });
 
@@ -155,22 +156,21 @@ Object.defineProperty(Packet.prototype, 'recursive', {
  */
 Packet.prototype.toBuffer = function(writer) {
   writer = writer || new Packet.Writer();
-  this.header.qdcount = this.questions  .length;
-  this.header.ancount = this.answers    .length;
+  this.header.qdcount = this.questions.length;
+  this.header.ancount = this.answers.length;
   this.header.nscount = this.authorities.length;
   this.header.arcount = this.additionals.length;
-  if(!(this instanceof Packet.Header))
-    this.header = new Packet.Header(this.header);
+  if (!(this instanceof Packet.Header)) { this.header = new Packet.Header(this.header); }
   this.header.toBuffer(writer);
-  ;([ // section          encoder
-    [ 'questions'  , Packet.Question ],
-    [ 'answers'    , Packet.Resource ],
+  ([ // section          encoder
+    [ 'questions', Packet.Question ],
+    [ 'answers', Packet.Resource ],
     [ 'authorities', Packet.Resource ],
     [ 'additionals', Packet.Resource ],
   ]).forEach(function(def) {
-    const section   = def[0];
-    const Encoder   = def[1];
-    (this[ section ] || []).map(function(resource) {
+    const section = def[0];
+    const Encoder = def[1];
+    (this[section] || []).map(function(resource) {
       return Encoder.encode(resource, writer);
     });
   }.bind(this));
@@ -183,20 +183,20 @@ Packet.prototype.toBuffer = function(writer) {
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.1
  */
 Packet.Header = function(header) {
-  this.id      = 0;
-  this.qr      = 0;
-  this.opcode  = 0;
-  this.aa      = 0;
-  this.tc      = 0;
-  this.rd      = 0;
-  this.ra      = 0;
-  this.z       = 0;
-  this.rcode   = 0;
+  this.id = 0;
+  this.qr = 0;
+  this.opcode = 0;
+  this.aa = 0;
+  this.tc = 0;
+  this.rd = 0;
+  this.ra = 0;
+  this.z = 0;
+  this.rcode = 0;
   this.qdcount = 0;
   this.nscount = 0;
   this.arcount = 0;
-  for(var k in header) {
-    this[ k ] = header[ k ];
+  for (const k in header) {
+    this[k] = header[k];
   }
   return this;
 };
@@ -207,19 +207,19 @@ Packet.Header = function(header) {
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.1
  */
 Packet.Header.parse = function(reader) {
-  var header = new Packet.Header();
-  if(reader instanceof Buffer) {
+  const header = new Packet.Header();
+  if (reader instanceof Buffer) {
     reader = new Packet.Reader(reader);
   }
-  header.id      = reader.read(16);
-  header.qr      = reader.read(1);
-  header.opcode  = reader.read(4);
-  header.aa      = reader.read(1);
-  header.tc      = reader.read(1);
-  header.rd      = reader.read(1);
-  header.ra      = reader.read(1);
-  header.z       = reader.read(3);
-  header.rcode   = reader.read(4);
+  header.id = reader.read(16);
+  header.qr = reader.read(1);
+  header.opcode = reader.read(4);
+  header.aa = reader.read(1);
+  header.tc = reader.read(1);
+  header.rd = reader.read(1);
+  header.ra = reader.read(1);
+  header.z = reader.read(3);
+  header.rcode = reader.read(4);
   header.qdcount = reader.read(16);
   header.ancount = reader.read(16);
   header.nscount = reader.read(16);
@@ -233,19 +233,19 @@ Packet.Header.parse = function(reader) {
  */
 Packet.Header.prototype.toBuffer = function(writer) {
   writer = writer || new Packet.Writer();
-  writer.write(this.id     , 16)
-  writer.write(this.qr     , 1)
-  writer.write(this.opcode , 4)
-  writer.write(this.aa     , 1)
-  writer.write(this.tc     , 1)
-  writer.write(this.rd     , 1)
-  writer.write(this.ra     , 1)
-  writer.write(this.z      , 3)
-  writer.write(this.rcode  , 4)
-  writer.write(this.qdcount, 16)
-  writer.write(this.ancount, 16)
-  writer.write(this.nscount, 16)
-  writer.write(this.arcount, 16)
+  writer.write(this.id, 16);
+  writer.write(this.qr, 1);
+  writer.write(this.opcode, 4);
+  writer.write(this.aa, 1);
+  writer.write(this.tc, 1);
+  writer.write(this.rd, 1);
+  writer.write(this.ra, 1);
+  writer.write(this.z, 3);
+  writer.write(this.rcode, 4);
+  writer.write(this.qdcount, 16);
+  writer.write(this.ancount, 16);
+  writer.write(this.nscount, 16);
+  writer.write(this.arcount, 16);
   return writer.toBuffer();
 };
 
@@ -254,13 +254,14 @@ Packet.Header.prototype.toBuffer = function(writer) {
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.2
  */
 Packet.Question = function(name, type, cls) {
-  var defaults = {
-    type : Packet.TYPE .ANY,
-    class: Packet.CLASS.ANY,
+  const defaults = {
+    type  : Packet.TYPE.ANY,
+    class : Packet.CLASS.ANY,
   };
-  if(typeof name === 'object') {
-    for(var k in name)
-      this[ k ] = name[k] || defaults[k];
+  if (typeof name === 'object') {
+    for (const k in name) {
+      this[k] = name[k] || defaults[k];
+    }
   } else {
     this.name = name;
     this.type = type || defaults.type;
@@ -285,20 +286,20 @@ Packet.Question.prototype.toBuffer = function(writer) {
  */
 Packet.Question.parse =
 Packet.Question.decode = function(reader) {
-  var question = new Packet.Question();
-  if(reader instanceof Buffer) {
+  const question = new Packet.Question();
+  if (reader instanceof Buffer) {
     reader = new Packet.Reader(reader);
   }
   question.name = Packet.Name.decode(reader);
   question.type = reader.read(16);
-  question.class= reader.read(16);
+  question.class = reader.read(16);
   return question;
 };
 
 Packet.Question.encode = function(question, writer) {
   writer = writer || new Packet.Writer();
   Packet.Name.encode(question.name, writer);
-  writer.write(question.type,  16);
+  writer.write(question.type, 16);
   writer.write(question.class, 16);
   return writer.toBuffer();
 };
@@ -308,20 +309,20 @@ Packet.Question.encode = function(question, writer) {
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.3
  */
 Packet.Resource = function(name, type, cls, ttl) {
-  var defaults = {
-    name : '',
-    ttl  : 300,
-    type : Packet.TYPE .ANY,
-    class: Packet.CLASS.ANY,
+  const defaults = {
+    name  : '',
+    ttl   : 300,
+    type  : Packet.TYPE.ANY,
+    class : Packet.CLASS.ANY,
   };
-   var input;
-   if(typeof name === 'object') {
+  let input;
+  if (typeof name === 'object') {
     input = name;
-   } else {
-     input = {
-       name, type, class: cls, ttl
-     };
-   }
+  } else {
+    input = {
+      name, type, class: cls, ttl,
+    };
+  }
   Object.assign(this, defaults, input);
   return this;
 };
@@ -344,14 +345,14 @@ Packet.Resource.prototype.toBuffer = function(writer) {
 Packet.Resource.encode = function(resource, writer) {
   writer = writer || new Packet.Writer();
   Packet.Name.encode(resource.name, writer);
-  writer.write(resource.type,  16);
+  writer.write(resource.type, 16);
   writer.write(resource.class, 16);
-  writer.write(resource.ttl,   32);
-  var encoder = Object.keys(Packet.TYPE).filter(function(type) {
-    return resource.type == Packet.TYPE[ type ];
+  writer.write(resource.ttl, 32);
+  const encoder = Object.keys(Packet.TYPE).filter(function(type) {
+    return resource.type === Packet.TYPE[type];
   })[0];
-  if(encoder in Packet.Resource && Packet.Resource[ encoder ].encode) {
-    return Packet.Resource[ encoder ].encode(resource, writer);
+  if (encoder in Packet.Resource && Packet.Resource[encoder].encode) {
+    return Packet.Resource[encoder].encode(resource, writer);
   } else {
     debug('node-dns > unknown encoder %s(%j)', encoder, resource.type);
   }
@@ -363,24 +364,24 @@ Packet.Resource.encode = function(resource, writer) {
  */
 Packet.Resource.parse =
 Packet.Resource.decode = function(reader) {
-  if(reader instanceof Buffer) {
+  if (reader instanceof Buffer) {
     reader = new Packet.Reader(reader);
   }
-  var resource = new Packet.Resource();
-  resource.name  = Packet.Name.decode(reader);
-  resource.type  = reader.read(16);
+  let resource = new Packet.Resource();
+  resource.name = Packet.Name.decode(reader);
+  resource.type = reader.read(16);
   resource.class = reader.read(16);
-  resource.ttl   = reader.read(32);
-  const length     = reader.read(16);
+  resource.ttl = reader.read(32);
+  let length = reader.read(16);
   const parser = Object.keys(Packet.TYPE).filter(function(type) {
-    return resource.type === Packet.TYPE[ type ];
+    return resource.type === Packet.TYPE[type];
   })[0];
-  if(parser in Packet.Resource) {
-    resource = Packet.Resource[ parser ].decode.call(resource, reader, length);
+  if (parser in Packet.Resource) {
+    resource = Packet.Resource[parser].decode.call(resource, reader, length);
   } else {
     debug('node-dns > unknown parser type: %s(%j)', parser, resource.type);
     const arr = [];
-    while(length--) arr.push(reader.read(8));
+    while (length--) arr.push(reader.read(8));
     resource.data = Buffer.from(arr);
   }
   return resource;
@@ -392,29 +393,29 @@ Packet.Resource.decode = function(reader) {
  * @return {[type]}        [description]
  */
 Packet.Name = {
-  COPY: 0xc0,
-  decode: function(reader) {
-    if(reader instanceof Buffer) {
+  COPY   : 0xc0,
+  decode : function(reader) {
+    if (reader instanceof Buffer) {
       reader = new Packet.Reader(reader);
     }
-    var name = [], o, len = reader.read(8);
-    while(len) {
-      if((len & Packet.Name.COPY) === Packet.Name.COPY) {
+    const name = []; let o; let len = reader.read(8);
+    while (len) {
+      if ((len & Packet.Name.COPY) === Packet.Name.COPY) {
         len -= Packet.Name.COPY;
         len = len << 8;
-        var pos = len + reader.read(8);
-        if(!o) o = reader.offset;
+        const pos = len + reader.read(8);
+        if (!o) o = reader.offset;
         reader.offset = pos * 8;
         len = reader.read(8);
         continue;
       } else {
-        var part = '';
-        while(len--) part += String.fromCharCode(reader.read(8));
+        let part = '';
+        while (len--) part += String.fromCharCode(reader.read(8));
         name.push(part);
         len = reader.read(8);
       }
     }
-    if(o) reader.offset = o;
+    if (o) reader.offset = o;
     return name.join('.');
   },
   encode: function(domain, writer) {
@@ -422,16 +423,16 @@ Packet.Name = {
     // TODO: domain name compress
     (domain || '').split('.').filter(function(part) {
       return !!part;
-    }).map(function(part) {
+    }).forEach(function(part) {
       writer.write(part.length, 8);
       part.split('').map(function(c) {
         writer.write(c.charCodeAt(0), 8);
-        return c.charCodeAt(0)
+        return c.charCodeAt(0);
       });
     });
     writer.write(0, 8);
     return writer.toBuffer();
-  }
+  },
 };
 
 /**
@@ -440,7 +441,7 @@ Packet.Name = {
  * @docs https://tools.ietf.org/html/rfc1035#section-3.4.1
  */
 Packet.Resource.A = function(address) {
-  this.type  = Packet.TYPE.A;
+  this.type = Packet.TYPE.A;
   this.class = Packet.CLASS.IN;
   this.address = address;
   return this;
@@ -448,7 +449,7 @@ Packet.Resource.A = function(address) {
 
 Packet.Resource.A.encode = function(record, writer) {
   writer = writer || new Packet.Writer();
-  var parts = record.address.split('.');
+  const parts = record.address.split('.');
   writer.write(parts.length, 16);
   parts.forEach(function(part) {
     writer.write(parseInt(part, 10), 8);
@@ -457,8 +458,8 @@ Packet.Resource.A.encode = function(record, writer) {
 };
 
 Packet.Resource.A.decode = function(reader, length) {
-  var parts = [];
-  while(length--) parts.push(reader.read(8));
+  const parts = [];
+  while (length--) parts.push(reader.read(8));
   this.address = parts.join('.');
   return this;
 };
@@ -475,7 +476,7 @@ Packet.Resource.MX = function(exchange, priority) {
   this.exchange = exchange;
   this.priority = priority;
   return this;
-}
+};
 /**
  * [encode description]
  * @param  {[type]} record [description]
@@ -484,12 +485,12 @@ Packet.Resource.MX = function(exchange, priority) {
  */
 Packet.Resource.MX.encode = function(record, writer) {
   writer = writer || new Packet.Writer();
-  var len = Packet.Name.encode(record.exchange).length;
+  const len = Packet.Name.encode(record.exchange).length;
   writer.write(len + 2, 16);
   writer.write(record.priority, 16);
   Packet.Name.encode(record.exchange, writer);
   return writer.toBuffer();
-}
+};
 /**
  * [decode description]
  * @param  {[type]} reader [description]
@@ -508,11 +509,11 @@ Packet.Resource.MX.decode = function(reader, length) {
  */
 Packet.Resource.AAAA = {
   decode: function(reader, length) {
-    var parts = [];
-    while(length) {
-      length-=2;
+    const parts = [];
+    while (length) {
+      length -= 2;
       parts.push(reader.read(16));
-    };
+    }
     this.address = parts.map(function(part) {
       return part > 0 ? part.toString(16) : '';
     }).join(':');
@@ -520,13 +521,13 @@ Packet.Resource.AAAA = {
   },
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
-    var parts = record.address.split(':');
+    const parts = record.address.split(':');
     writer.write(parts.length * 2, 16);
     parts.forEach(function(part) {
       writer.write(parseInt(part, 16), 16);
     });
     return writer.toBuffer();
-  }
+  },
 };
 /**
  * [NS description]
@@ -543,7 +544,7 @@ Packet.Resource.NS = {
     writer.write(Packet.Name.encode(record.ns).length, 16);
     Packet.Name.encode(record.ns, writer);
     return writer.toBuffer();
-  }
+  },
 };
 /**
  * [CNAME description]
@@ -561,7 +562,7 @@ Packet.Resource.CNAME = {
     writer.write(Packet.Name.encode(record.domain).length, 16);
     Packet.Name.encode(record.domain, writer);
     return writer.toBuffer();
-  }
+  },
 };
 /**
  * [SPF description]
@@ -571,14 +572,14 @@ Packet.Resource.CNAME = {
 Packet.Resource.SPF =
 Packet.Resource.TXT = {
   decode: function(reader, length) {
-    var parts = [];
-    var bytesRead = 0, chunkLength = 0;
+    const parts = [];
+    let bytesRead = 0; let chunkLength = 0;
 
-    while(bytesRead < length) {
+    while (bytesRead < length) {
       chunkLength = reader.read(8); // text length
       bytesRead++;
 
-      while(chunkLength--) {
+      while (chunkLength--) {
         parts.push(reader.read(8));
         bytesRead++;
       }
@@ -591,13 +592,13 @@ Packet.Resource.TXT = {
     writer = writer || new Packet.Writer();
 
     // make sure that resource data is a an array of strings
-    var characterStrings = Array.isArray(record.data) ? record.data : [record.data];
+    const characterStrings = Array.isArray(record.data) ? record.data : [ record.data ];
     // convert array of strings to array of buffers
-    var characterStringBuffers = characterStrings.map(function(characterString) {
-      if(Buffer.isBuffer(characterString)) {
+    const characterStringBuffers = characterStrings.map(function(characterString) {
+      if (Buffer.isBuffer(characterString)) {
         return characterString;
       }
-      if(typeof characterString === 'string') {
+      if (typeof characterString === 'string') {
         return Buffer.from(characterString, 'utf8');
       }
       return false;
@@ -607,7 +608,7 @@ Packet.Resource.TXT = {
     });
 
     // calculate byte length of resource strings
-    var bufferLength = characterStringBuffers.reduce(function(sum, characterStringBuffer) {
+    const bufferLength = characterStringBuffers.reduce(function(sum, characterStringBuffer) {
       return sum + characterStringBuffer.length;
     }, 0);
 
@@ -623,7 +624,7 @@ Packet.Resource.TXT = {
     });
 
     return writer.toBuffer();
-  }
+  },
 };
 /**
  * [SOA description]
@@ -632,31 +633,31 @@ Packet.Resource.TXT = {
  */
 Packet.Resource.SOA = {
   decode: function(reader, length) {
-    this.primary    = Packet.Name.decode(reader);
-    this.admin      = Packet.Name.decode(reader);
-    this.serial     = reader.read(32);
-    this.refresh    = reader.read(32);
-    this.retry      = reader.read(32);
+    this.primary = Packet.Name.decode(reader);
+    this.admin = Packet.Name.decode(reader);
+    this.serial = reader.read(32);
+    this.refresh = reader.read(32);
+    this.retry = reader.read(32);
     this.expiration = reader.read(32);
-    this.minimum    = reader.read(32);
+    this.minimum = reader.read(32);
     return this;
   },
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
-    var len = 0;
+    let len = 0;
     len += Packet.Name.encode(record.primary).length;
     len += Packet.Name.encode(record.admin).length;
     len += (32 * 5) / 8;
     writer.write(len, 16);
     Packet.Name.encode(record.primary, writer);
     Packet.Name.encode(record.admin, writer);
-    writer.write(record.serial    , 32);
-    writer.write(record.refresh   , 32);
-    writer.write(record.retry     , 32);
+    writer.write(record.serial, 32);
+    writer.write(record.refresh, 32);
+    writer.write(record.retry, 32);
     writer.write(record.expiration, 32);
-    writer.write(record.minimum   , 32);
+    writer.write(record.minimum, 32);
     return writer.toBuffer();
-  }
+  },
 };
 /**
  * [SRV description]
@@ -666,34 +667,34 @@ Packet.Resource.SOA = {
 Packet.Resource.SRV = {
   decode: function(reader, length) {
     this.priority = reader.read(16);
-    this.weight   = reader.read(16);
-    this.port     = reader.read(16);
-    this.target   = Packet.Name.decode(reader);
+    this.weight = reader.read(16);
+    this.port = reader.read(16);
+    this.target = Packet.Name.decode(reader);
     return this;
   },
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
     const { length } = Packet.Name.encode(record.target);
-    writer.write(length + 6     , 16);
+    writer.write(length + 6, 16);
     writer.write(record.priority, 16);
-    writer.write(record.weight  , 16);
-    writer.write(record.port    , 16);
+    writer.write(record.weight, 16);
+    writer.write(record.port, 16);
     Packet.Name.encode(record.target, writer);
     return writer.toBuffer();
-  }
+  },
 };
 
 Packet.Resource.EDNS = function(rdata) {
   return {
-    type: Packet.TYPE['EDNS'],
-    class: 512, // Supported UDP Payload size
-    ttl: 0, // Extended RCODE and flags
-    rdata // Objects of type Packet.Resource.EDNS.*
+    type  : Packet.TYPE.EDNS,
+    class : 512, // Supported UDP Payload size
+    ttl   : 0, // Extended RCODE and flags
+    rdata, // Objects of type Packet.Resource.EDNS.*
   };
 };
 
 Packet.Resource.EDNS.decode = function(reader, length) {
-  this.type = Packet.TYPE['EDNS'];
+  this.type = Packet.TYPE.EDNS;
   this.class = 512;
   this.ttl = 0;
   this.rdata = [];
@@ -703,10 +704,10 @@ Packet.Resource.EDNS.decode = function(reader, length) {
     const optionLength = reader.read(16); // In octet (https://tools.ietf.org/html/rfc6891#page-8)
 
     const decoder = Object.keys(Packet.EDNS_OPTION_CODE).filter(function(type) {
-      return optionCode == Packet.EDNS_OPTION_CODE[ type ];
+      return optionCode === Packet.EDNS_OPTION_CODE[type];
     })[0];
-    if (decoder in Packet.Resource.EDNS && Packet.Resource.EDNS[ decoder ].decode) {
-      const rdata = Packet.Resource.EDNS[ decoder ].decode(reader, optionLength);
+    if (decoder in Packet.Resource.EDNS && Packet.Resource.EDNS[decoder].decode) {
+      const rdata = Packet.Resource.EDNS[decoder].decode(reader, optionLength);
       this.rdata.push(rdata);
     } else {
       reader.read(optionLength); // Ignore data that doesn't understand
@@ -720,16 +721,16 @@ Packet.Resource.EDNS.decode = function(reader, length) {
 
 Packet.Resource.EDNS.encode = function(record, writer) {
   const rdataWriter = new Packet.Writer();
-  for(let rdata of record.rdata) {
-    var encoder = Object.keys(Packet.EDNS_OPTION_CODE).filter(function(type) {
-      return rdata.ednsCode == Packet.EDNS_OPTION_CODE[ type ];
+  for (const rdata of record.rdata) {
+    const encoder = Object.keys(Packet.EDNS_OPTION_CODE).filter(function(type) {
+      return rdata.ednsCode === Packet.EDNS_OPTION_CODE[type];
     })[0];
-    if(encoder in Packet.Resource.EDNS && Packet.Resource.EDNS[ encoder ].encode) {
+    if (encoder in Packet.Resource.EDNS && Packet.Resource.EDNS[encoder].encode) {
       const w = new Packet.Writer();
-      Packet.Resource.EDNS[ encoder ].encode(rdata, w);
+      Packet.Resource.EDNS[encoder].encode(rdata, w);
       rdataWriter.write(rdata.ednsCode, 16);
       rdataWriter.write(w.buffer.length / 8, 16);
-      rdataWriter.writeBuffer(w)
+      rdataWriter.writeBuffer(w);
     } else {
       debug('node-dns > unknown EDNS rdata encoder %s(%j)', encoder, rdata.ednsCode);
     }
@@ -741,16 +742,16 @@ Packet.Resource.EDNS.encode = function(record, writer) {
 };
 
 Packet.Resource.EDNS.ECS = function(clientIp) {
-  const [ip, prefixLength] = clientIp.split('/');
+  const [ ip, prefixLength ] = clientIp.split('/');
   const numPrefixLength = parseInt(prefixLength) || 32;
   return {
-        ednsCode: Packet.EDNS_OPTION_CODE.ECS,
-        family: 1,
-        sourcePrefixLength: numPrefixLength,
-        scopePrefixLength: 0,
-        ip
+    ednsCode           : Packet.EDNS_OPTION_CODE.ECS,
+    family             : 1,
+    sourcePrefixLength : numPrefixLength,
+    scopePrefixLength  : 0,
+    ip,
   };
-}
+};
 
 Packet.Resource.EDNS.ECS.decode = function(reader, length) {
   const rdata = {};
@@ -776,10 +777,10 @@ Packet.Resource.EDNS.ECS.decode = function(reader, length) {
   }
   rdata.ip = ipv4Octets.join('.');
   return rdata;
-}
+};
 
 Packet.Resource.EDNS.ECS.encode = function(record, writer) {
-  const ip = record.ip.split('.').map( s => parseInt(s));
+  const ip = record.ip.split('.').map(s => parseInt(s));
   writer.write(record.family, 16);
   writer.write(record.sourcePrefixLength, 8);
   writer.write(record.scopePrefixLength, 8);
@@ -787,13 +788,13 @@ Packet.Resource.EDNS.ECS.encode = function(record, writer) {
   writer.write(ip[1], 8);
   writer.write(ip[2], 8);
   writer.write(ip[3], 8);
-}
+};
 
 Packet.Resource.CAA = {
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
 
-    const buffer = new Buffer(record.tag + record.value, "utf8");
+    const buffer = Buffer.from(record.tag + record.value, 'utf8');
     writer.write(2 + buffer.length, 16);
     writer.write(record.flags, 8);
     writer.write(record.tag.length, 8);
@@ -802,7 +803,7 @@ Packet.Resource.CAA = {
       writer.write(c, 8);
     });
     return writer.toBuffer();
-  }
+  },
 };
 
 Packet.Reader = BufferReader;
@@ -819,7 +820,7 @@ Packet.createResourceFromQuestion = function(base, record) {
   const resource = new Packet.Resource(base);
   Object.assign(resource, record);
   return resource;
-}
+};
 
 Packet.readStream = socket => {
   let chunks = [];
@@ -843,7 +844,7 @@ Packet.readStream = socket => {
       }
       if (!expected && chunklen >= 2) {
         if (chunks.length > 1) {
-          chunks = [Buffer.concat(chunks, chunklen)];
+          chunks = [ Buffer.concat(chunks, chunklen) ];
         }
         expected = chunks[0].readUInt16BE(0);
       }
@@ -863,9 +864,9 @@ Packet.prototype.toBase64URL = function() {
   const buffer = this.toBuffer();
   const base64 = buffer.toString('base64');
   return base64
-    .replace(/=/g, "")
-    .replace(/\+/g, "-")
-    .replace(/\//g, "_");
+    .replace(/=/g, '')
+    .replace(/\+/g, '-')
+    .replace(/\//g, '_');
 };
 
 module.exports = Packet;
