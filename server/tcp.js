@@ -9,17 +9,20 @@ class Server extends tcp.Server {
     }
     this.on('connection', this.handle.bind(this));
   }
+
   async handle(client) {
     const data = await Packet.readStream(client);
     const message = Packet.parse(data);
     this.emit('request', message, this.response.bind(this, client), client);
   }
+
   response(client, message) {
-    if (message instanceof Packet)
+    if (message instanceof Packet) {
       message = message.toBuffer();
+    }
     const len = Buffer.alloc(2);
     len.writeUInt16BE(message.length);
-    client.end(Buffer.concat([len, message]));
+    client.end(Buffer.concat([ len, message ]));
   }
 }
 

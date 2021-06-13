@@ -3,7 +3,7 @@ const Packet = require('../packet');
 
 const get = url => new Promise(resolve => {
   const headers = {
-    accept: 'application/dns-message'
+    accept: 'application/dns-message',
   };
   https.get(url, { headers }, resolve);
 });
@@ -15,12 +15,12 @@ const readStream = stream => {
       .on('error', reject)
       .on('data', chunk => buffer.push(chunk))
       .on('end', () => resolve(Buffer.concat(buffer)));
-  })
+  });
 };
 
 /**
  * @docs https://tools.ietf.org/html/rfc8484
- * @param {*} param0 
+ * @param {*} param0
  */
 const DOHClient = ({ dns } = {}) => {
   return (name, type = 'A', cls = Packet.CLASS.IN, { clientIp, recursive = true } = {}) => {
@@ -29,22 +29,22 @@ const DOHClient = ({ dns } = {}) => {
     if (recursive) {
       packet.header.rd = 1;
     }
-    if (clientIp) {
-      query.additionals.push(Packet.Resource.EDNS([
-        Packet.Resource.EDNS.ECS(clientIp)
-      ]));
-    };
     packet.questions.push({
       name,
-      class: cls,
-      type: Packet.TYPE[type],
+      class : cls,
+      type  : Packet.TYPE[type],
     });
     const query = packet.toBase64URL();
+    if (clientIp) {
+      query.additionals.push(Packet.Resource.EDNS([
+        Packet.Resource.EDNS.ECS(clientIp),
+      ]));
+    }
     return Promise
       .resolve()
       .then(() => get(`https://${dns}/dns-query?dns=${query}`))
       .then(readStream)
-      .then(Packet.parse)
+      .then(Packet.parse);
   };
 };
 

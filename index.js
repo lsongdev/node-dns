@@ -17,24 +17,25 @@ class DNS extends EventEmitter {
   constructor(options) {
     super();
     Object.assign(this, {
-      port: 53,
-      retries: 3,
-      timeout: 3,
-      recursive: true,
-      resolverProtocol: 'UDP',
-      nameServers: [
+      port             : 53,
+      retries          : 3,
+      timeout          : 3,
+      recursive        : true,
+      resolverProtocol : 'UDP',
+      nameServers      : [
         '8.8.8.8',
         '114.114.114.114',
       ],
       rootServers: [
         'a', 'b', 'c', 'd', 'e', 'f',
-        'g', 'h', 'i', 'j', 'k', 'l', 'm'
-      ].map(x => `${x}.root-servers.net`)
+        'g', 'h', 'i', 'j', 'k', 'l', 'm',
+      ].map(x => `${x}.root-servers.net`),
     }, options);
   }
+
   /**
    * query
-   * @param {*} questions 
+   * @param {*} questions
    */
   query(name, type, cls, clientIp) {
     const { port, nameServers, recursive, resolverProtocol = 'UDP' } = this;
@@ -44,27 +45,33 @@ class DNS extends EventEmitter {
       return resolve(name, type, cls, clientIp);
     }));
   }
+
   /**
    * resolve
-   * @param {*} domain 
-   * @param {*} type 
-   * @param {*} cls 
+   * @param {*} domain
+   * @param {*} type
+   * @param {*} cls
    */
-  resolve(domain, type = 'ANY', cls = DNS.Packet.CLASS.IN, clientIp) {
+  resolve(domain, type = 'ANY', cls = DNS.Packet.CLASS.IN, clientIp = undefined) {
     return this.query(domain, type, cls, clientIp);
   }
+
   resolveA(domain, clientIp) {
     return this.resolve(domain, 'A', undefined, clientIp);
   }
+
   resolveAAAA(domain) {
     return this.resolve(domain, 'AAAA');
   }
+
   resolveMX(domain) {
     return this.resolve(domain, 'MX');
   }
+
   resolveCNAME(domain) {
     return this.resolve(domain, 'CNAME');
   }
+
   resolvePTR(domain) {
     return this.resolve(domain, 'PTR');
   }
@@ -86,4 +93,3 @@ DNS.GoogleClient = require('./client/google');
 DNS.Packet = require('./packet');
 
 module.exports = DNS;
-

@@ -16,13 +16,13 @@ module.exports = ({ dns = '8.8.8.8', port = 53, socketType = 'udp4' } = {}) => {
     }
     if (clientIp) {
       query.additionals.push(Packet.Resource.EDNS([
-        Packet.Resource.EDNS.ECS(clientIp)
+        Packet.Resource.EDNS.ECS(clientIp),
       ]));
-    };
+    }
     query.questions.push({
       name,
-      class: cls,
-      type: Packet.TYPE[type],
+      class : cls,
+      type  : Packet.TYPE[type],
     });
     const client = new udp.Socket(socketType);
     return new Promise((resolve, reject) => {
@@ -35,5 +35,5 @@ module.exports = ({ dns = '8.8.8.8', port = 53, socketType = 'udp4' } = {}) => {
       debug('send', dns, query.toBuffer());
       client.send(query.toBuffer(), port, dns, err => err && reject(err));
     });
-  }
+  };
 };

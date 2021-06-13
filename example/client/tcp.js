@@ -2,11 +2,11 @@ const { TCPClient } = require('../..');
 
 const resolve = TCPClient();
 
-(async () => {
+(async() => {
   try {
-    const response = await resolve('google.com')
+    const response = await resolve('google.com');
     console.log(response.answers);
-  } catch(error) {
+  } catch (error) {
     console.log(error);
   }
 })();

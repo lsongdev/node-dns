@@ -5,6 +5,7 @@
   "main": "index.js",
   "scripts": {
     "test": "node test",
+    "lint": "eslint .",
     "example-server-udp": "node example/server/udp.js",
     "example-server-tcp": "node example/server/tcp.js",
     "example-server-doh": "node example/server/doh.js",
@@ -30,5 +31,11 @@
   "bugs": {
     "url": "https://github.com/song940/node-dns/issues"
   },
-  "homepage": "https://github.com/song940/node-dns#readme"
+  "homepage": "https://github.com/song940/node-dns#readme",
+  "devDependencies": {
+    "eslint": "^7.28.0",
+    "eslint-config-semistandard": "^15.0.1",
+    "eslint-plugin-node": "^11.1.0",
+    "eslint-plugin-promise": "^4.2.1"
+  }
 }

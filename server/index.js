@@ -12,7 +12,7 @@ const createTCPServer = options => {
 
 const createDOHServer = options => {
   return new DOHServer(options);
-}
+};
 
 module.exports = {
   UDPServer,
@@ -20,5 +20,5 @@ module.exports = {
   DOHServer,
   createTCPServer,
   createUDPServer,
-  createDOHServer
+  createDOHServer,
 };
