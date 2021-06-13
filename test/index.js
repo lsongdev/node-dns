@@ -1,6 +1,7 @@
 const assert = require('assert');
 const test = require('./test');
-const Packet = require('../packet');
+const { Packet, createDOHServer } = require('..');
+const http = require('http');
 
 /* TODO: below is unused, either delete or use
 const request = Buffer.from([
@@ -238,3 +239,84 @@ test('EDNS#decode multiple', function() {
 
   assert.deepEqual(decoded, query);
 });
+
+test('server/doh#cors - default', async function() {
+  const server = createDOHServer();
+  const { port } = await new Promise(resolve => {
+    server.on('listening', resolve);
+    server.listen();
+  });
+  const { headers } = await get(`http://localhost:${port}`);
+  assert.equal(headers['access-control-allow-origin'], '*');
+  server.server.close();
+});
+
+test('server/doh#cors - no cors', async function() {
+  const server = createDOHServer({
+    cors: false,
+  });
+  const { port } = await new Promise(resolve => {
+    server.on('listening', resolve);
+    server.listen();
+  });
+  const { headers } = await get(`http://localhost:${port}`);
+  assert.equal(headers['access-control-allow-origin'], undefined);
+  server.server.close();
+});
+
+test('server/doh#cors - cors origin', async function() {
+  const server = createDOHServer({
+    cors: 'some.domain',
+  });
+  const { port } = await new Promise(resolve => {
+    server.on('listening', resolve);
+    server.listen();
+  });
+  const { headers } = await get(`http://localhost:${port}`);
+  assert.equal(headers['access-control-allow-origin'], 'some.domain');
+  assert.equal(headers.vary, 'Origin');
+  server.server.close();
+});
+
+test('server/doh#cors - cors function', async function() {
+  const server = createDOHServer({
+    cors(domain) {
+      if (domain === 'a.domain') {
+        return true;
+      } else if (domain === 'b.domain') {
+        return false;
+      }
+      throw new Error(`Unexpected domain: ${domain}`);
+    },
+  });
+  const { port } = await new Promise(resolve => {
+    server.on('listening', resolve);
+    server.listen();
+  });
+  let headers = (await get(`http://localhost:${port}`, { headers: { origin: 'a.domain' } })).headers;
+  assert.equal(headers['access-control-allow-origin'], 'a.domain');
+  assert.equal(headers.vary, 'Origin');
+  headers = (await get(`http://localhost:${port}`, { headers: { origin: 'b.domain' } })).headers;
+  assert.equal(headers['access-control-allow-origin'], 'false');
+  assert.equal(headers.vary, 'Origin');
+  server.server.close();
+});
+
+function get(url, options) {
+  return new Promise((resolve, reject) => {
+    try {
+      const req = http.get(url, options, res => {
+        const result = [];
+        res.on('data', data => result.push(data));
+        res.once('error', reject);
+        res.once('end', () => resolve({
+          body    : Buffer.concat(result),
+          headers : res.headers,
+        }));
+      });
+      req.on('error', reject);
+    } catch (err) {
+      reject(err);
+    }
+  });
+}
