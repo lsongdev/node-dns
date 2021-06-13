@@ -30,7 +30,7 @@ const readStream = stream => new Promise((resolve, reject) => {
 class Server extends EventEmitter {
   constructor(options) {
     super();
-    const { ssl } = Object.assign(this, options);
+    const { ssl } = Object.assign(this, { cors: true }, options);
     this.server = ssl ? https.createServer(options) : http.createServer();
     this.server.on('request', this.handleRequest.bind(this));
     return this;
@@ -39,6 +39,17 @@ class Server extends EventEmitter {
   async handleRequest(client, res) {
     const { method, url, headers } = client;
     const { pathname, query } = new URL(url, 'http://unused/');
+    const { cors } = this;
+    if (cors === true) {
+      res.setHeader('Access-Control-Allow-Origin', '*');
+    } else if (typeof cors === 'string') {
+      res.setHeader('Access-Control-Allow-Origin', cors);
+      res.setHeader('Vary', 'Origin');
+    } else if (typeof cors === 'function') {
+      const isAllowed = cors(headers.origin);
+      res.setHeader('Access-Control-Allow-Origin', isAllowed ? headers.origin : 'false');
+      res.setHeader('Vary', 'Origin');
+    }
     // debug
     debug('request', method, url);
     // We are only handling get and post as reqired by rfc
