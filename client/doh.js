@@ -29,17 +29,17 @@ const DOHClient = ({ dns } = {}) => {
     if (recursive) {
       packet.header.rd = 1;
     }
+    if (clientIp) {
+      packet.additionals.push(Packet.Resource.EDNS([
+        Packet.Resource.EDNS.ECS(clientIp),
+      ]));
+    }
     packet.questions.push({
       name,
       class : cls,
       type  : Packet.TYPE[type],
     });
     const query = packet.toBase64URL();
-    if (clientIp) {
-      query.additionals.push(Packet.Resource.EDNS([
-        Packet.Resource.EDNS.ECS(clientIp),
-      ]));
-    }
     return Promise
       .resolve()
       .then(() => get(`https://${dns}/dns-query?dns=${query}`))
