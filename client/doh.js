@@ -1,11 +1,14 @@
 const https = require('https');
+const http = require('http');
 const Packet = require('../packet');
 
-const get = url => new Promise(resolve => {
+const get = url => new Promise((resolve, reject) => {
   const headers = {
     accept: 'application/dns-message',
   };
-  https.get(url, { headers }, resolve);
+  const base = url.startsWith('https') ? https : http;
+  const req = base.get(url, { headers }, resolve);
+  req.on('error', reject);
 });
 
 const readStream = stream => {
@@ -22,7 +25,7 @@ const readStream = stream => {
  * @docs https://tools.ietf.org/html/rfc8484
  * @param {*} param0
  */
-const DOHClient = ({ dns } = {}) => {
+const DOHClient = ({ dns, http } = {}) => {
   return (name, type = 'A', cls = Packet.CLASS.IN, { clientIp, recursive = true } = {}) => {
     const packet = new Packet();
     // see https://github.com/song940/node-dns/issues/29
@@ -42,7 +45,7 @@ const DOHClient = ({ dns } = {}) => {
     const query = packet.toBase64URL();
     return Promise
       .resolve()
-      .then(() => get(`https://${dns}/dns-query?dns=${query}`))
+      .then(() => get(`http${http ? '' : 's'}://${dns}/dns-query?dns=${query}`))
       .then(readStream)
       .then(Packet.parse);
   };
