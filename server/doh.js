@@ -38,7 +38,7 @@ class Server extends EventEmitter {
 
   async handleRequest(client, res) {
     const { method, url, headers } = client;
-    const { pathname, query } = new URL(url, 'http://unused/');
+    const { pathname, searchParams: query } = new URL(url, 'http://unused/');
     const { cors } = this;
     if (cors === true) {
       res.setHeader('Access-Control-Allow-Origin', '*');
@@ -77,7 +77,7 @@ class Server extends EventEmitter {
     let queryData;
     if (method === 'GET') {
       // Parse query string for the request data
-      const { dns } = query;
+      const dns = query.get('dns');
       if (!dns) {
         res.writeHead(400, { 'Content-Type': 'text/plain' });
         res.write('400 Bad Request: No query defined\n');
