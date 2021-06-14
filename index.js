@@ -5,6 +5,7 @@ const {
   createTCPServer,
   createUDPServer,
   createDOHServer,
+  createServer,
 } = require('./server');
 const EventEmitter = require('events');
 
@@ -84,6 +85,7 @@ DNS.DOHServer = DOHServer;
 DNS.createUDPServer = createUDPServer;
 DNS.createTCPServer = createTCPServer;
 DNS.createDOHServer = createDOHServer;
+DNS.createServer = createServer;
 
 DNS.TCPClient = require('./client/tcp');
 DNS.DOHClient = require('./client/doh');
