@@ -31,8 +31,14 @@ class Server extends EventEmitter {
   constructor(options) {
     super();
     const { ssl } = Object.assign(this, { cors: true }, options);
-    this.server = ssl ? https.createServer(options) : http.createServer();
-    this.server.on('request', this.handleRequest.bind(this));
+    this.server = (ssl ? https.createServer(options) : http.createServer())
+      .on('request', this.handleRequest.bind(this))
+      .on('listening', () => this.emit('listening', this.address()))
+      .on('error', error => this.emit('error', error))
+      .on('close', () => {
+        this.server.removeAllListeners();
+        this.emit('close');
+      });
     return this;
   }
 
@@ -120,9 +126,15 @@ class Server extends EventEmitter {
    * @returns
    */
   listen(port) {
-    return this.server.listen(port || this.port, () => {
-      this.emit('listening', this.server.address());
-    });
+    return this.server.listen(port || this.port);
+  }
+
+  address() {
+    return this.server.address();
+  }
+
+  close() {
+    return this.server.close();
   }
 }
 
