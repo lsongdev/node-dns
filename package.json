@@ -1,6 +1,6 @@
 {
   "name": "dns2",
-  "version": "2.0.0",
+  "version": "2.0.1",
   "description": "A DNS Server and Client Implementation in Pure JavaScript with no dependencies.",
   "main": "index.js",
   "scripts": {
@@ -21,7 +21,8 @@
   "author": "Liu Song <hi@lsong.org>",
   "contributors": [
     "Andris Reinman <andris.reinman@gmail.com>",
-    "Eviltik <eviltik@gmail.com>"
+    "Eviltik <eviltik@gmail.com>",
+    "Martin Heidegger <martin.heidegger@gmail.com>"
   ],
   "license": "MIT",
   "repository": {
