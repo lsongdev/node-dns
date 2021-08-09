@@ -81,7 +81,7 @@ Packet.TYPE = {
   LOC        : 0x1D,
   NXT        : 0x1E,
   EID        : 0x1F,
-  NB         : 0x20,
+  NIMLOC     : 0x20,
   SRV        : 0x21,
   ATMA       : 0x22,
   NAPTR      : 0x23,
