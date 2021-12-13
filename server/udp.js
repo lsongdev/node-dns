@@ -20,8 +20,12 @@ class Server extends udp.Socket {
   }
 
   handle(data, rinfo) {
-    const message = Packet.parse(data);
-    this.emit('request', message, this.response.bind(this, rinfo), rinfo);
+    try {
+      const message = Packet.parse(data);
+      this.emit('request', message, this.response.bind(this, rinfo), rinfo);
+    } catch (e) {
+      this.emit('requestError', e);
+    }
   }
 
   response(rinfo, message) {

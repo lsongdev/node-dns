@@ -43,69 +43,74 @@ class Server extends EventEmitter {
   }
 
   async handleRequest(client, res) {
-    const { method, url, headers } = client;
-    const { pathname, searchParams: query } = new URL(url, 'http://unused/');
-    const { cors } = this;
-    if (cors === true) {
-      res.setHeader('Access-Control-Allow-Origin', '*');
-    } else if (typeof cors === 'string') {
-      res.setHeader('Access-Control-Allow-Origin', cors);
-      res.setHeader('Vary', 'Origin');
-    } else if (typeof cors === 'function') {
-      const isAllowed = cors(headers.origin);
-      res.setHeader('Access-Control-Allow-Origin', isAllowed ? headers.origin : 'false');
-      res.setHeader('Vary', 'Origin');
-    }
-    // debug
-    debug('request', method, url);
-    // We are only handling get and post as reqired by rfc
-    if ((method !== 'GET' && method !== 'POST')) {
-      res.writeHead(405, { 'Content-Type': 'text/plain' });
-      res.write('405 Method not allowed\n');
-      res.end();
-      return;
-    }
-    // Check so the uri is correct
-    if (pathname !== '/dns-query') {
-      res.writeHead(404, { 'Content-Type': 'text/plain' });
-      res.write('404 Not Found\n');
-      res.end();
-      return;
-    }
-    // Make sure the requestee is requesting the correct content type
-    const contentType = headers.accept;
-    if (contentType !== 'application/dns-message') {
-      res.writeHead(400, { 'Content-Type': 'text/plain' });
-      res.write('400 Bad Request: Illegal content type\n');
-      res.end();
-      return;
-    }
-    let queryData;
-    if (method === 'GET') {
-      // Parse query string for the request data
-      const dns = query.get('dns');
-      if (!dns) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.write('400 Bad Request: No query defined\n');
+    try {
+      const { method, url, headers } = client;
+      const { pathname, searchParams: query } = new URL(url, 'http://unused/');
+      const { cors } = this;
+      if (cors === true) {
+        res.setHeader('Access-Control-Allow-Origin', '*');
+      } else if (typeof cors === 'string') {
+        res.setHeader('Access-Control-Allow-Origin', cors);
+        res.setHeader('Vary', 'Origin');
+      } else if (typeof cors === 'function') {
+        const isAllowed = cors(headers.origin);
+        res.setHeader('Access-Control-Allow-Origin', isAllowed ? headers.origin : 'false');
+        res.setHeader('Vary', 'Origin');
+      }
+      // debug
+      debug('request', method, url);
+      // We are only handling get and post as reqired by rfc
+      if ((method !== 'GET' && method !== 'POST')) {
+        res.writeHead(405, { 'Content-Type': 'text/plain' });
+        res.write('405 Method not allowed\n');
         res.end();
         return;
       }
-      // Decode from Base64Url Encoding
-      const base64 = decodeBase64URL(dns);
-      if (!base64) {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.write('400 Bad Request: Invalid query data\n');
+      // Check so the uri is correct
+      if (pathname !== '/dns-query') {
+        res.writeHead(404, { 'Content-Type': 'text/plain' });
+        res.write('404 Not Found\n');
         res.end();
         return;
       }
-      // Decode Base64 to buffer
-      queryData = Buffer.from(base64, 'base64');
-    } else if (method === 'POST') {
-      queryData = await readStream(client);
+      // Make sure the requestee is requesting the correct content type
+      const contentType = headers.accept;
+      if (contentType !== 'application/dns-message') {
+        res.writeHead(400, { 'Content-Type': 'text/plain' });
+        res.write('400 Bad Request: Illegal content type\n');
+        res.end();
+        return;
+      }
+      let queryData;
+      if (method === 'GET') {
+        // Parse query string for the request data
+        const dns = query.get('dns');
+        if (!dns) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.write('400 Bad Request: No query defined\n');
+          res.end();
+          return;
+        }
+        // Decode from Base64Url Encoding
+        const base64 = decodeBase64URL(dns);
+        if (!base64) {
+          res.writeHead(400, { 'Content-Type': 'text/plain' });
+          res.write('400 Bad Request: Invalid query data\n');
+          res.end();
+          return;
+        }
+        // Decode Base64 to buffer
+        queryData = Buffer.from(base64, 'base64');
+      } else if (method === 'POST') {
+        queryData = await readStream(client);
+      }
+      // Parse DNS query and Raise event.
+      const message = Packet.parse(queryData);
+      this.emit('request', message, this.response.bind(this, res), client);
+    } catch (e) {
+      this.emit('requestError', e);
+      res.destroy();
     }
-    // Parse DNS query and Raise event.
-    const message = Packet.parse(queryData);
-    this.emit('request', message, this.response.bind(this, res), client);
   }
 
   /**
