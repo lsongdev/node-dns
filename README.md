@@ -145,6 +145,10 @@ server.on('request', (request, response, rinfo) => {
   console.log(request.header.id, request.questions[0]);
 });
 
+server.on('requestError', (error) => {
+  console.log('Client sent an invalid request', error);
+});
+
 server.on('listening', () => {
   console.log(server.address());
 });

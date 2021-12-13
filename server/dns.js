@@ -35,8 +35,10 @@ class DNSServer extends EventEmitter {
     });
 
     const emitRequest = (request, send, client) => this.emit('request', request, send, client);
+    const emitRequestError = (error) => this.emit('requestError', error);
     for (const server of servers) {
       server.on('request', emitRequest);
+      server.on('requestError', emitRequestError);
     }
 
     if (options.handle) {

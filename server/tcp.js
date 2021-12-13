@@ -11,9 +11,13 @@ class Server extends tcp.Server {
   }
 
   async handle(client) {
-    const data = await Packet.readStream(client);
-    const message = Packet.parse(data);
-    this.emit('request', message, this.response.bind(this, client), client);
+    try {
+      const data = await Packet.readStream(client);
+      const message = Packet.parse(data);
+      this.emit('request', message, this.response.bind(this, client), client);
+    } catch (e) {
+      this.emit('requestError', e);
+    }
   }
 
   response(client, message) {
