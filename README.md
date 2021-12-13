@@ -146,7 +146,7 @@ server.on('request', (request, response, rinfo) => {
 });
 
 server.on('listening', () => {
-  console.log(server.address());
+  console.log(server.addresses());
 });
 
 server.on('close', () => {
