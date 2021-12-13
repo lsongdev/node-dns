@@ -17,6 +17,7 @@ class Server extends tcp.Server {
       this.emit('request', message, this.response.bind(this, client), client);
     } catch (e) {
       this.emit('requestError', e);
+      client.destroy();
     }
   }
 

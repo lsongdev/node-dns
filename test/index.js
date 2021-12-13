@@ -2,6 +2,8 @@ const assert = require('assert');
 const test = require('./test');
 const { Packet, createDOHServer, createServer, TCPClient, DOHClient, UDPClient } = require('..');
 const http = require('http');
+const tcp = require('net');
+const udp = require('dgram');
 
 /* TODO: below is unused, either delete or use
 const request = Buffer.from([
@@ -332,6 +334,44 @@ test('server/all#simple-request', async() => {
   assert.deepEqual((await doh('test.com')).answers, expected);
   assert.deepEqual((await tcp('test.com')).answers, expected);
   assert.deepEqual((await udp('test.com')).answers, expected);
+  await server.close();
+});
+
+test('server/all#invalid-request', async() => {
+  const server = createServer({
+    doh    : true,
+    tcp    : true,
+    udp    : true,
+    handle : () => {},
+  });
+  const servers = await server.listen();
+  assert.ok(servers.udp.port > 1000);
+  assert.ok(servers.tcp.port > 1000);
+  assert.ok(servers.doh.port > 1000);
+
+  const errors = [];
+  server.on('requestError', (e) => {
+    errors.push(e);
+  });
+
+  const tcpSocket = tcp.connect({ port: servers.tcp.port, host: '127.0.0.1' });
+  tcpSocket.on('connect', () => tcpSocket.end('INVALID'));
+
+  const udpSocket = udp.createSocket('udp4');
+  udpSocket.send('INVALID', servers.udp.port, '127.0.0.1', () => udpSocket.close());
+
+  const dohConn = http.get(`http://127.0.0.1:${servers.doh.port}/dns-query?dns=INVALID`, {
+    headers: { accept: 'application/dns-message' },
+  }).on('error', () => {});
+
+  await Promise.all([
+    new Promise((resolve) => tcpSocket.on('close', resolve)),
+    new Promise((resolve) => udpSocket.on('close', resolve)),
+    new Promise((resolve) => dohConn.on('close', resolve)),
+  ]);
+
+  assert.equal(errors.length, 3);
+
   await server.close();
 });
 
