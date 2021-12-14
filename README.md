@@ -154,7 +154,8 @@ server.on('close', () => {
 });
 
 server.listen({
-  udp: 5333
+  // Optionally specify port and/or address for each server:
+  udp: { port: 5333 }
 });
 
 // eventually

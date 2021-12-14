@@ -59,17 +59,18 @@ class DNSServer extends EventEmitter {
     return addresses;
   }
 
-  listen(ports = {}) {
-    const { udp, tcp, doh } = this.servers;
-    if (udp) {
-      udp.listen(ports.udp);
+  listen(options = {}) {
+    for (const serverType of Object.keys(this.servers)) {
+      const server = this.servers[serverType];
+      const serverOptions = options[serverType]; // Port or { port, address }
+
+      if (serverOptions && serverOptions.port) {
+        server.listen(serverOptions.port, serverOptions.address);
+      } else {
+        server.listen(serverOptions);
+      }
     }
-    if (tcp) {
-      tcp.listen(ports.tcp);
-    }
-    if (doh) {
-      doh.listen(ports.doh);
-    }
+
     return this.listening;
   }
 

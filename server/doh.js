@@ -125,8 +125,8 @@ class Server extends EventEmitter {
    * @param {*} port
    * @returns
    */
-  listen(port) {
-    return this.server.listen(port || this.port);
+  listen(port, address) {
+    return this.server.listen(port || this.port, address);
   }
 
   address() {
