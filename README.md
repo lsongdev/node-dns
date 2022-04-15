@@ -158,8 +158,18 @@ server.on('close', () => {
 });
 
 server.listen({
-  // Optionally specify port and/or address for each server:
-  udp: { port: 5333 }
+  // Optionally specify port, address and/or the family of socket() for udp server:
+  udp: { 
+    port: 5333,
+    address: "127.0.0.1",
+    type: "udp4",  // IPv4 or IPv6 (Must be either "udp4" or "udp6")
+  },
+  
+  // Optionally specify port and/or address for tcp server:
+  tcp: { 
+    port: 5333,
+    address: "127.0.0.1",
+  },
 });
 
 // eventually
