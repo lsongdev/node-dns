@@ -112,7 +112,7 @@ test('Packet#encode', function() {
     type    : Packet.TYPE.AAAA,
     class   : Packet.CLASS.IN,
     ttl     : 300,
-    address : '2001:db8::::ff00:42:8329',
+    address : '2001:db8::ff00:42:8329',
   });
 
   response.answers.push({
