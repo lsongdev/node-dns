@@ -514,9 +514,10 @@ Packet.Resource.AAAA = {
       length -= 2;
       parts.push(reader.read(16));
     }
-    this.address = parts.map(function(part) {
-      return part > 0 ? part.toString(16) : '';
-    }).join(':');
+    this.address = parts
+      .map(part => part > 0 ? part.toString(16) : '')
+      .join(':')
+      .replace('::::', '::');
     return this;
   },
   encode: function(record, writer) {
