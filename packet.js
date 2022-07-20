@@ -517,7 +517,8 @@ Packet.Resource.AAAA = {
     this.address = parts
       .map(part => part > 0 ? part.toString(16) : '')
       .join(':')
-      .replace('::::', '::');
+      .replace('::::', '::')
+      .replace(':::', '::');
     return this;
   },
   encode: function(record, writer) {
