@@ -4,6 +4,11 @@ const BufferWriter = require('./lib/writer');
 
 const debug = debuglog('dns2');
 
+const toIPv6 = buffer => buffer
+  .map(part => (part > 0 ? part.toString(16) : '0'))
+  .join(':')
+  .replace(/\b(?:0+:){1,}/, ':');
+
 /**
  * [Packet description]
  * @param {[type]} data [description]
@@ -514,10 +519,7 @@ Packet.Resource.AAAA = {
       length -= 2;
       parts.push(reader.read(16));
     }
-    this.address = parts
-      .map(part => part > 0 ? part.toString(16) : '')
-      .join(':')
-      .replace('::::', '::');
+    this.address = toIPv6(parts);
     return this;
   },
   encode: function(record, writer) {
@@ -871,3 +873,4 @@ Packet.prototype.toBase64URL = function() {
 };
 
 module.exports = Packet;
+module.exports.toIPv6 = toIPv6;
