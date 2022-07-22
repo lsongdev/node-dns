@@ -85,6 +85,13 @@ test('Question#decode', function() {
 });
 
 //
+test('Package#toIPv6', function() {
+  assert.equal(Packet.toIPv6([ 10756, 20034, 512, 0, 0, 0, 0, 803 ]), '2a04:4e42:200::323');
+  assert.equal(Packet.toIPv6([ 10755, 45248, 3, 208, 0, 0, 5057, 61441 ]), '2a03:b0c0:3:d0::13c1:f001');
+  assert.equal(Packet.toIPv6([ 10752, 5200, 16387, 2055, 0, 0, 0, 8206 ]), '2a00:1450:4003:807::200e');
+  assert.equal(Packet.toIPv6([ 9734, 18176, 12552, 0, 0, 0, 44098, 10984 ]), '2606:4700:3108::ac42:2ae8');
+});
+
 test('Packet#parse', function() {
   const packet = Packet.parse(response);
   assert.equal(packet.questions[0].name, 'www.z.cn');
