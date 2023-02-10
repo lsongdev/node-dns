@@ -98,6 +98,9 @@ test('Package#fromIPv6', function() {
   assert.deepEqual(Packet.fromIPv6('2a03:b0c0:3:d0::13c1:f001'), [ '2a03', 'b0c0', '0003', '00d0', '0', '0', '13c1', 'f001' ]);
   assert.deepEqual(Packet.fromIPv6('2a00:1450:4003:807::200e'), [ '2a00', '1450', '4003', '0807', '0', '0', '0', '200e' ]);
   assert.deepEqual(Packet.fromIPv6('2606:4700:3108::ac42:2ae8'), [ '2606', '4700', '3108', '0', '0', '0', 'ac42', '2ae8' ]);
+  assert.deepEqual(Packet.fromIPv6('::'), [ '0', '0', '0', '0', '0', '0', '0', '0' ]);
+  assert.deepEqual(Packet.fromIPv6('::2606:4700:3108'), [ '0', '0', '0', '0', '0', '2606', '4700', '3108' ]);
+  assert.deepEqual(Packet.fromIPv6('606:4700:3108::'), [ '0606', '4700', '3108', '0', '0', '0', '0', '0' ]);
 });
 
 test('Packet#parse', function() {

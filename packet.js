@@ -11,8 +11,16 @@ const toIPv6 = buffer => buffer
 
 const fromIPv6 = (address) => {
   const digits = address.split(':');
-  // CAVEAT we have to take into account the extra
-  // space used by the empty string
+  // CAVEAT edge case for :: and IPs starting
+  // or ending by ::
+  if (digits[0] === '') {
+    digits.shift();
+  }
+  if (digits[digits.length - 1] === '') {
+    digits.pop();
+  }
+  // CAVEAT we have to take into account
+  // the extra space used by the empty string
   const missingFields = 8 - digits.length + 1;
   return digits.flatMap((digit) => {
     if (digit === '') {
