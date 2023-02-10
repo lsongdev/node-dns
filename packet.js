@@ -9,6 +9,19 @@ const toIPv6 = buffer => buffer
   .join(':')
   .replace(/\b(?:0+:){1,}/, ':');
 
+const fromIPv6 = (address) => {
+  const digits = address.split(':');
+  // CAVEAT we have to take into account the extra
+  // space used by the empty string
+  const missingFields = 8 - digits.length + 1;
+  return digits.flatMap((digit) => {
+    if (digit === '') {
+      return Array(missingFields).fill('0');
+    }
+    return digit.padStart(4, '0');
+  });
+};
+
 /**
  * [Packet description]
  * @param {[type]} data [description]
@@ -524,7 +537,7 @@ Packet.Resource.AAAA = {
   },
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
-    const parts = record.address.split(':');
+    const parts = fromIPv6(record.address);
     writer.write(parts.length * 2, 16);
     parts.forEach(function(part) {
       writer.write(parseInt(part, 16), 16);
@@ -874,3 +887,4 @@ Packet.prototype.toBase64URL = function() {
 
 module.exports = Packet;
 module.exports.toIPv6 = toIPv6;
+module.exports.fromIPv6 = fromIPv6;
