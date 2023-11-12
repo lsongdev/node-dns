@@ -149,6 +149,21 @@ test('Packet#encode', function() {
     domain : 'sfo1.lsong.org',
   });
 
+  // DNS KEY
+  response.answers.push({
+    name      : 'lsong.org',
+    ttl       : 300,
+    type      : 48,
+    class     : 1,
+    flags     : 256,
+    protocol  : 3,
+    algorithm : 13,
+    keyTag    : 1721,
+    zoneKey   : true,
+    zoneSep   : false,
+    key       : 'PM8S6PI0Gf8d3HK9gHSVpW3X3zeieMEa+PLCijFuaFgiIANdUQen5xNn0/9+eo3E4VIJGU27lk6q4xXqMuQl7A==',
+  });
+
   response.authorities.push({
     name     : 'lsong.org',
     type     : Packet.TYPE.MX,

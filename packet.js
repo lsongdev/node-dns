@@ -76,31 +76,32 @@ function Packet(data) {
  * @docs https://tools.ietf.org/html/rfc1035#section-3.2.2
  */
 Packet.TYPE = {
-  A     : 0x01,
-  NS    : 0x02,
-  MD    : 0x03,
-  MF    : 0x04,
-  CNAME : 0x05,
-  SOA   : 0x06,
-  MB    : 0x07,
-  MG    : 0x08,
-  MR    : 0x09,
-  NULL  : 0x0A,
-  WKS   : 0x0B,
-  PTR   : 0x0C,
-  HINFO : 0x0D,
-  MINFO : 0x0E,
-  MX    : 0x0F,
-  TXT   : 0x10,
-  AAAA  : 0x1C,
-  SRV   : 0x21,
-  EDNS  : 0x29,
-  SPF   : 0x63,
-  AXFR  : 0xFC,
-  MAILB : 0xFD,
-  MAILA : 0xFE,
-  ANY   : 0xFF,
-  CAA   : 0x101,
+  A      : 0x01,
+  NS     : 0x02,
+  MD     : 0x03,
+  MF     : 0x04,
+  CNAME  : 0x05,
+  SOA    : 0x06,
+  MB     : 0x07,
+  MG     : 0x08,
+  MR     : 0x09,
+  NULL   : 0x0A,
+  WKS    : 0x0B,
+  PTR    : 0x0C,
+  HINFO  : 0x0D,
+  MINFO  : 0x0E,
+  MX     : 0x0F,
+  TXT    : 0x10,
+  AAAA   : 0x1C,
+  SRV    : 0x21,
+  EDNS   : 0x29,
+  SPF    : 0x63,
+  AXFR   : 0xFC,
+  MAILB  : 0xFD,
+  MAILA  : 0xFE,
+  ANY    : 0xFF,
+  CAA    : 0x101,
+  DNSKEY : 0x30,
 };
 /**
  * [QUERY_CLASS description]
@@ -823,6 +824,54 @@ Packet.Resource.CAA = {
     writer.write(record.flags, 8);
     writer.write(record.tag.length, 8);
 
+    buffer.forEach(function(c) {
+      writer.write(c, 8);
+    });
+    return writer.toBuffer();
+  },
+};
+
+/**
+ * @type {{decode: (function(*, *): Packet.Resource.DNSKEY)}}
+ * @link https://tools.ietf.org/html/rfc4034
+ * @link https://www.iana.org/assignments/dns-sec-alg-numbers/dns-sec-alg-numbers.xhtml#table-dns-sec-alg-numbers-1
+ */
+Packet.Resource.DNSKEY = {
+  decode: function(reader, length) {
+    const RData = [];
+    while (RData.length < length) {
+      RData.push(reader.read(8));
+    }
+    this.flags = RData[0] << 8 | RData[1];
+    this.protocol = RData[2];
+    this.algorithm = RData[3];
+    // for key tag
+    let ac = 0;
+    for (let i = 0; i < length; ++i) {
+      ac += (i & 1) ? RData[i] : RData[i] << 8;
+    }
+    ac += (ac >> 16) & 0xFFFF;
+    this.keyTag = ac & 0XFFFF;
+
+    //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 = 16
+    // convert binary flags
+    let binFlags = this.flags.toString(2);
+    // add left padding until 16 chars
+    while (binFlags.length < 16) {
+      binFlags = '0' + binFlags;
+    }
+    this.zoneKey = binFlags[7] === '1';
+    this.zoneSep = binFlags[15] === '1';
+    this.key = Buffer.from(RData.slice(4)).toString('base64');
+    return this;
+  },
+  encode: function(record, writer) {
+    writer = writer || new Packet.Writer();
+    const buffer = Buffer.from(record.key, 'base64');
+    writer.write(4 + buffer.length, 16);
+    writer.write(record.flags, 16);
+    writer.write(record.protocol, 8);
+    writer.write(record.algorithm, 8);
     buffer.forEach(function(c) {
       writer.write(c, 8);
     });
