@@ -80,6 +80,10 @@ class DNS extends EventEmitter {
   resolveDNSKEY(domain) {
     return this.resolve(domain, 'DNSKEY');
   }
+
+  resolveRRSIG(domain) {
+    return this.resolve(domain, 'RRSIG');
+  }
 }
 
 DNS.TCPServer = TCPServer;
