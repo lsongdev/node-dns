@@ -19,6 +19,14 @@ const fromIPv6 = (address) => {
   if (digits[digits.length - 1] === '') {
     digits.pop();
   }
+  // node js 10 does not support Array.prototype.flatMap
+  if (!Array.prototype.flatMap) {
+    // eslint-disable-next-line no-extend-native
+    Array.prototype.flatMap = function(f, ctx) {
+      return this.reduce((r, x, i, a) => r.concat(f.call(ctx, x, i, a)), []);
+    };
+  }
+
   // CAVEAT we have to take into account
   // the extra space used by the empty string
   const missingFields = 8 - digits.length + 1;
