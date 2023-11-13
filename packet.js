@@ -879,6 +879,62 @@ Packet.Resource.DNSKEY = {
   },
 };
 
+/**
+ * RRSIG just support decode
+ * test with dns.resolveRRSIG('example.com')
+ *
+ * @type {{decode: (function(*, *): Packet.Resource.RRSIG)}}
+ */
+Packet.Resource.RRSIG = {
+  decode: function(reader, length) {
+    function dateForSig(date) {
+      // javascript date is from millisecond
+      date = new Date(date * 1000);
+      const definitions = {
+        month   : (date.getUTCMonth() + 1),
+        date    : date.getUTCDate(),
+        hour    : date.getUTCHours(),
+        minutes : date.getUTCMinutes(),
+        seconds : date.getUTCSeconds(),
+      };
+      let i;
+      for (i in definitions) {
+        // if less than 10 > single
+        if (definitions[i] < 10) {
+          definitions[i] = '0' + '' + definitions[i];
+        }
+      }
+      return date.getFullYear() + '' +
+        definitions.month + '' +
+        definitions.date + '' +
+        definitions.hour + '' +
+        definitions.minutes + '' +
+        definitions.seconds;
+    }
+
+    // calculate max-offset uint8
+    const maxOffset = reader.offset + (length * 8);
+    /*
+     * Stuff sign contains 18 octets
+     */
+    this.sigType = reader.read(16); // 2
+    this.algorithm = reader.read(8); // 1
+    this.labels = reader.read(8); // 1
+    this.originalTtl = reader.read(32); // 4
+    this.expiration = dateForSig(reader.read(32)); // 4
+    this.inception = dateForSig(reader.read(32)); // 4
+    this.keyTag = reader.read(16); // 2
+    this.signer = Packet.Name.decode(reader);
+    const maxLength = (maxOffset - reader.offset) / 8;
+    const signature = [];
+    while (signature.length < maxLength) {
+      signature.push(reader.read(8));
+    }
+    this.signature = Buffer.from(signature).toString('base64');
+    return this;
+  },
+};
+
 Packet.Reader = BufferReader;
 Packet.Writer = BufferWriter;
 
