@@ -162,7 +162,6 @@ server.listen({
   udp: { 
     port: 5333,
     address: "127.0.0.1",
-    type: "udp4",  // IPv4 or IPv6 (Must be either "udp4" or "udp6")
   },
   
   // Optionally specify port and/or address for tcp server:
