@@ -794,21 +794,30 @@ Packet.Resource.EDNS.ECS.decode = function(reader, length) {
   rdata.scopePrefixLength = reader.read(8);
   length -= 4;
 
-  if (rdata.family !== 1) {
-    debug('node-dns > unimplemented address family');
-    reader.read(length * 8); // Ignore data that doesn't understand
-    return rdata;
+  if (rdata.family === 1) {
+    const ipv4Octets = [];
+    while (length--) {
+      const octet = reader.read(8);
+      ipv4Octets.push(octet);
+    }
+    while (ipv4Octets.length < 4) {
+      ipv4Octets.push(0);
+    }
+    rdata.ip = ipv4Octets.join('.');
   }
 
-  const ipv4Octets = [];
-  while (length--) {
-    const octet = reader.read(8);
-    ipv4Octets.push(octet);
+  if (rdata.family === 2) {
+    const ipv6Segments = [];
+    for (; length; length -= 2) {
+      const segment = reader.read(16).toString(16);
+      ipv6Segments.push(segment);
+    }
+    while (ipv6Segments.length < 8) {
+      ipv6Segments.push('0');
+    }
+    rdata.ip = ipv6Segments.join(':');
   }
-  while (ipv4Octets.length < 4) {
-    ipv4Octets.push(0);
-  }
-  rdata.ip = ipv4Octets.join('.');
+
   return rdata;
 };
 
