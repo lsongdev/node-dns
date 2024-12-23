@@ -35,26 +35,18 @@ class DNS extends EventEmitter {
   }
 
   /**
-   * query
-   * @param {*} questions
-   */
-  query(name, type, cls, clientIp) {
-    const { port, nameServers, recursive, resolverProtocol = 'UDP' } = this;
-    const createResolver = DNS[resolverProtocol + 'Client'];
-    return Promise.race(nameServers.map(address => {
-      const resolve = createResolver({ dns: address, port, recursive });
-      return resolve(name, type, cls, clientIp);
-    }));
-  }
-
-  /**
    * resolve
    * @param {*} domain
    * @param {*} type
    * @param {*} cls
    */
-  resolve(domain, type = 'ANY', cls = DNS.Packet.CLASS.IN, clientIp = undefined) {
-    return this.query(domain, type, cls, clientIp);
+  resolve(domain, type = 'ANY', cls = DNS.Packet.CLASS.IN, options = {}) {
+    const { port, nameServers, resolverProtocol = 'UDP' } = this;
+    const createResolver = DNS[resolverProtocol + 'Client'];
+    return Promise.race(nameServers.map(address => {
+      const resolve = createResolver({ dns: address, port });
+      return resolve(domain, type, cls, options);
+    }));
   }
 
   resolveA(domain, clientIp) {

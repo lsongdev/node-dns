@@ -6,10 +6,10 @@ const { debuglog } = require('util');
 const debug = debuglog('dns2');
 
 module.exports = ({ dns = '8.8.8.8', port = 53, socketType = 'udp4' } = {}) => {
-  return (name, type = 'A', cls = Packet.CLASS.IN, { clientIp, recursive = true } = {}) => {
+  return (name, type = 'A', cls = Packet.CLASS.IN, options = {}) => {
+    const { clientIp, recursive = true } = options;
     const query = new Packet();
     query.header.id = (Math.random() * 1e4) | 0;
-
     // see https://github.com/song940/node-dns/issues/29
     if (recursive) {
       query.header.rd = 1;
