@@ -4,23 +4,23 @@ const http2 = require('http2');
 const Packet = require('../packet');
 
 const protocols = {
-  'http:': http.get,
-  'https:': https.get,
-  'h2:': (url, options, cb) => {
+  'http:'  : http.get,
+  'https:' : https.get,
+  'h2:'    : (url, options, done) => {
     const urlObj = new URL(url);
     const client = http2.connect(url.replace('h2:', 'https:'));
     const req = client.request({
-      ':path': `${urlObj.pathname}${urlObj.search}`,
-      ':method': 'GET',
-      ...options.headers
+      ':path'   : `${urlObj.pathname}${urlObj.search}`,
+      ':method' : 'GET',
+      ...options.headers,
     });
 
     req.on('response', headers => {
       client.close();
-      cb({
+      done({
         headers,
-        statusCode: headers[':status'],
-        on: req.on.bind(req)
+        statusCode : headers[':status'],
+        on         : req.on.bind(req),
       });
     });
 
@@ -30,7 +30,7 @@ const protocols = {
     });
 
     req.end();
-  }
+  },
 };
 
 const makeRequest = (url, query) => new Promise((resolve, reject) => {
@@ -65,7 +65,7 @@ const buildQuery = ({ name, type = 'A', cls = Packet.CLASS.IN, clientIp, recursi
 
   if (clientIp) {
     packet.additionals.push(Packet.Resource.EDNS([
-      Packet.Resource.EDNS.ECS(clientIp)
+      Packet.Resource.EDNS.ECS(clientIp),
     ]));
   }
 
@@ -74,7 +74,7 @@ const buildQuery = ({ name, type = 'A', cls = Packet.CLASS.IN, clientIp, recursi
 };
 
 const DOHClient = ({ dns }) => {
-  return async (name, type, cls, options = {}) => {
+  return async(name, type, cls, options = {}) => {
     const query = buildQuery({ name, type, cls, ...options });
     const response = await makeRequest(dns, query);
     const data = await readStream(response);
