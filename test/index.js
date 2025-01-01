@@ -1,7 +1,7 @@
 const assert = require('assert');
 const test = require('./test');
-const { Packet, createDOHServer, createServer } = require('..');
-// const { Packet, createDOHServer, createServer, TCPClient, DOHClient, UDPClient } = require('..');
+// const { Packet, createDOHServer, createServer } = require('..');
+const { Packet, createDOHServer, createServer, TCPClient, DOHClient, UDPClient } = require('..');
 const http = require('http');
 const tcp = require('net');
 const udp = require('dgram');
@@ -370,6 +370,36 @@ test('server/doh#cors - cors function', async function() {
 //   assert.deepEqual((await udp('test.com')).answers, expected);
 //   await server.close();
 // });
+
+test('server/udp-tcp#simple-request-async-response', async() => {
+  const server = createServer({
+    tcp : true,
+    udp : true,
+    handle(request, send, _info) {
+      const [ question ] = request.questions;
+      assert.deepEqual(request.questions, [ { name: 'test.com', type: 1, class: 1 } ]);
+      const response = Packet.createResponseFromRequest(request);
+      response.answers.push({
+        name  : question.name,
+        type  : Packet.TYPE.TXT,
+        class : Packet.CLASS.IN,
+        ttl   : 300,
+        data  : [ 'Hello World' ],
+      });
+
+      (new Promise((resolve) => setTimeout(() => resolve(), 1))).then(() => send(response));
+    },
+  });
+  const servers = await server.listen();
+  assert.ok(servers.udp.port > 1000);
+  assert.ok(servers.tcp.port > 1000);
+  const tcp = TCPClient({ dns: '127.0.0.1', port: servers.tcp.port });
+  const udp = UDPClient({ dns: '127.0.0.1', port: servers.udp.port });
+  const expected = [ { name: 'test.com', ttl: 300, type: 16, class: 1, data: 'Hello World' } ];
+  assert.deepEqual((await tcp('test.com')).answers, expected);
+  assert.deepEqual((await udp('test.com')).answers, expected);
+  await server.close();
+});
 
 test('server/all#invalid-request', async() => {
   const server = createServer({

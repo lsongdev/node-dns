@@ -19,7 +19,7 @@ const makeQuery = ({ name, type = 'A', cls = Packet.CLASS.IN, clientIp, recursiv
 const sendQuery = (client, message) => {
   const len = Buffer.alloc(2);
   len.writeUInt16BE(message.length);
-  client.end(Buffer.concat([ len, message ]));
+  client.write(Buffer.concat([ len, message ]));
 };
 
 const protocols = {
@@ -39,6 +39,7 @@ const TCPClient = ({ dns, protocol = 'tcp:', port = protocol === 'tls:' ? 853 : 
 
     sendQuery(client, message);
     const data = await Packet.readStream(client);
+    client.end();
 
     if (!data.length) throw new Error('Empty response');
     return Packet.parse(data);
