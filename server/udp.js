@@ -10,7 +10,7 @@ class Server extends udp.Socket {
   constructor(options) {
     let type = 'udp4';
     if (typeof options === 'object') {
-      type = options.type;
+      type = options.type ?? type;
     }
     super(type);
     if (typeof options === 'function') {
