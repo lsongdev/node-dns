@@ -20,3 +20,6 @@ const { DOHClient } = require('../..');
 DOHClient({
   dns: 'https://1.0.0.1/dns-query',
 })('cdnjs.com', 'NS').then(console.log);
+DOHClient({
+  dns: '1.0.0.1',
+})('cdnjs.com', 'NS').then(console.log);
