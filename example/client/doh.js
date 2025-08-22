@@ -18,5 +18,5 @@ const { DOHClient } = require('../..');
 // })('cdnjs.com', 'NS').then(console.log);
 
 DOHClient({
-  dns: 'h2://ada.openbld.net/dns-query?dns={query}',
+  dns: 'https://1.0.0.1/dns-query',
 })('cdnjs.com', 'NS').then(console.log);
