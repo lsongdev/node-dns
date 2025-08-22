@@ -457,3 +457,23 @@ function get(url, options) {
     }
   });
 }
+
+test('client/doh', async() => {
+  const res = await DOHClient({
+    dns: 'https://1.0.0.1/dns-query',
+  })('cdnjs.com', 'NS');
+
+  // console.log(res);
+  assert.equal(res.answers.length, 2);
+  assert.equal(res.answers[0].name, 'cdnjs.com');
+  assert.equal(res.answers[0].type, Packet.TYPE.NS);
+  assert.equal(res.answers[0].class, Packet.CLASS.IN);
+  assert.equal(res.answers[0].ns, 'ben.ns.cloudflare.com');
+  assert.equal(res.answers[1].name, 'cdnjs.com');
+  assert.equal(res.answers[1].type, Packet.TYPE.NS);
+  assert.equal(res.answers[1].class, Packet.CLASS.IN);
+  assert.equal(res.answers[1].ns, 'lara.ns.cloudflare.com');
+  assert.equal(res.header.qr, 1);
+  assert.equal(res.header.ancount, 2);
+  assert.equal(res.header.rcode, 0);
+});
