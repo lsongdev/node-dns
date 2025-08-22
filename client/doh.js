@@ -6,6 +6,13 @@ const Packet = require('../packet');
 const protocols = {
   'http:'  : http.get,
   'https:' : https.get,
+  /**
+   * HTTP/2 GET
+   *
+   * @param {string | URL} url
+   * @param {http.RequestOptions} options
+   * @param {(res: http.IncomingMessage) => void} done
+   */
   'h2:'    : (url, options, done) => {
     const urlObj = new URL(url);
     const client = http2.connect(url.replace('h2:', 'https:'));
@@ -34,19 +41,21 @@ const protocols = {
 };
 
 const makeRequest = (url, query) => new Promise((resolve, reject) => {
-  const index = url.indexOf('://');
-  if (index === -1) url = `https://${url}`;
+  if (!url.includes('/')) { // pure IP or pure domain like "1.0.0.1" or "dns.google"
+    url += '/dns-query';
+  }
+  if (!url.includes('://')) url = `https://${url}`;
   const u = new URL(url);
+
   // The DNS query is included in a single variable named “dns” in the
   // query component of the request URI.  The value of the “dns” variable
   // is the content of the DNS request message, encoded with base64url
   // [RFC4648](https://datatracker.ietf.org/doc/html/rfc8484#section-4.1).
-  const searchParams = u.searchParams;
-  searchParams.set('dns', query);
-  u.search = searchParams.toString();
+  u.searchParams.set('dns', query);
+
   const get = protocols[u.protocol];
   if (!get) throw new Error(`Unsupported protocol: ${u.protocol}, must be specified (http://, https:// or h2://)`);
-  const req = get(u.toString(), { headers: { accept: 'application/dns-message' } }, resolve);
+  const req = get(u, { headers: { accept: 'application/dns-message' } }, resolve);
   if (req) req.on('error', reject);
 });
 
