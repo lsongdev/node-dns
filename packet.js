@@ -148,7 +148,12 @@ Packet.uuid = function() {
 Packet.parse = function(buffer) {
   const packet = new Packet();
   const reader = new Packet.Reader(buffer);
-  packet.header = Packet.Header.parse(reader);
+  try {
+    packet.header = Packet.Header.parse(reader);
+  } catch(e){
+    debug('node-dns > parse %s error', 'parse', e.message);
+    return packet; 
+  }
   ([ // props             parser              count
     [ 'questions', Packet.Question, packet.header.qdcount ],
     [ 'answers', Packet.Resource, packet.header.ancount ],
