@@ -452,3 +452,65 @@ test('server/all#handler can respond with RCODE error codes', async() => {
 
   await server.close();
 });
+
+test('server/all#maxConcurrent - requests within limit are served normally', async() => {
+  const server = createServer({
+    udp           : true,
+    maxConcurrent : 10,
+    handle(request, send) {
+      const response = Packet.createResponseFromRequest(request);
+      response.answers.push({
+        name    : request.questions[0].name,
+        type    : Packet.TYPE.A,
+        class   : Packet.CLASS.IN,
+        ttl     : 60,
+        address : '1.2.3.4',
+      });
+      send(response);
+    },
+  });
+  const { udp: { port } } = await server.listen();
+  const client = UDPClient({ dns: '127.0.0.1', port });
+
+  const reply = await client('within-limit.test');
+  assert.equal(reply.header.rcode, Packet.RCODE.NOERROR);
+  assert.equal(reply.answers[0].address, '1.2.3.4');
+
+  await server.close();
+});
+
+test('server/all#maxConcurrent - excess requests receive SERVFAIL', async() => {
+  // Use a handler that holds requests open until we release them, so we can
+  // saturate the concurrency limit predictably.
+  const pending = [];
+  const server = createServer({
+    udp           : true,
+    maxConcurrent : 2,
+    handle(request, send) {
+      pending.push({ request, send });
+    },
+  });
+  const { udp: { port } } = await server.listen();
+  const client = UDPClient({ dns: '127.0.0.1', port });
+
+  // Fire q1 and q2 but don't await — they stay in the handler holding 2 slots.
+  const p1 = client('q1.test');
+  const p2 = client('q2.test');
+
+  // Wait until both are registered with the handler.
+  while (pending.length < 2) await new Promise(r => setTimeout(r, 5));
+
+  // q3 arrives when the limit is already full — should be shed immediately.
+  const r3 = await client('q3.test');
+  assert.equal(r3.header.rcode, Packet.RCODE.SERVFAIL, 'shed request gets SERVFAIL');
+
+  // Drain the two held requests so the server can close cleanly.
+  for (const { request, send } of pending) {
+    const response = Packet.createResponseFromRequest(request);
+    response.header.rcode = Packet.RCODE.NOERROR;
+    send(response);
+  }
+  await Promise.all([ p1, p2 ]);
+
+  await server.close();
+});

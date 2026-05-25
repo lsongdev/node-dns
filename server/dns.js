@@ -1,4 +1,5 @@
 const EventEmitter = require('node:events');
+const Packet = require('../packet');
 const DOHServer = require('./doh');
 const TCPServer = require('./tcp');
 const UDPServer = require('./udp');
@@ -34,7 +35,23 @@ class DNSServer extends EventEmitter {
       return addresses;
     });
 
-    const emitRequest = (request, send, client) => this.emit('request', request, send, client);
+    const maxConcurrent = options.maxConcurrent > 0 ? options.maxConcurrent : 0;
+    let active = 0;
+
+    const emitRequest = (request, send, client) => {
+      if (maxConcurrent && active >= maxConcurrent) {
+        const response = Packet.createResponseFromRequest(request);
+        response.header.rcode = Packet.RCODE.SERVFAIL;
+        send(response);
+        return;
+      }
+      active++;
+      const wrappedSend = (...args) => {
+        active--;
+        return send(...args);
+      };
+      this.emit('request', request, wrappedSend, client);
+    };
     const emitRequestError = (error) => this.emit('requestError', error);
     for (const server of servers) {
       server.on('request', emitRequest);

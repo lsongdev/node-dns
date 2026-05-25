@@ -17,7 +17,8 @@
     "example-client-udp": "node example/client/udp.js",
     "example-client-tcp": "node example/client/tcp.js",
     "example-client-google": "node example/client/google.js",
-    "example-client-udp-subnet": "node example/client/udp-subnet.js"
+    "example-client-udp-subnet": "node example/client/udp-subnet.js",
+    "benchmark": "node benchmark/udp.js"
   },
   "keywords": [
     "dns"

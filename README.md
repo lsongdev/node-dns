@@ -226,6 +226,10 @@ const server = dns2.createServer({
 });
 ```
 
+### Performance and Benchmarking
+
+see [benchmark/README.md](benchmark/README.md)
+
 ### Relevant Specifications
 
 + [RFC-1034 - Domain Names - Concepts and Facilities](https://tools.ietf.org/html/rfc1034)
