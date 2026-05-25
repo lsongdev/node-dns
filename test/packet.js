@@ -672,8 +672,8 @@ test('Packet.RCODE is preserved through encode/parse round-trip', function() {
 });
 
 test('Resource encode round-trips unknown type via raw data fallback', function() {
-  // C1 (AUDIT-RFC.md): the encoder must write RDLENGTH+RDATA for types it
-  // doesn't know how to serialize, otherwise the wire format is truncated.
+  // the encoder must write RDLENGTH+RDATA for types it doesn't know how
+  // to serialize, else the wire format is truncated.
   // 0xABCD is intentionally not in Packet.TYPE.
   const rdata = Buffer.from([ 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01 ]);
   const packet = new Packet();
@@ -695,9 +695,8 @@ test('Resource encode round-trips unknown type via raw data fallback', function(
 });
 
 test('Resource encode of unknown type does not corrupt following records', function() {
-  // The strongest signal for the C1 fix: without it, the missing RDLENGTH
-  // would make the parser interpret the next record's bytes as RDATA, and
-  // the A record below would never appear in `answers`.
+  // without the fix, the missing RDLENGTH would make the parser interpret the
+  // next record's bytes as RDATA, and the A record would never appear in `answers`.
   const packet = new Packet();
   packet.header.qr = 1;
   packet.answers.push({
@@ -745,6 +744,32 @@ test('Resource encode of unknown type with no data writes empty RDATA', function
   assert.equal(parsed.answers[0].type, 0xABCD);
   assert.equal(parsed.answers[0].data.length, 0);
   assert.equal(parsed.answers[1].address, '198.51.100.1');
+});
+
+test('Packet.uuid returns a 16-bit integer', function() {
+  // must use the full 16-bit space, not Math.random()*1e5.
+  for (let i = 0; i < 1000; i++) {
+    const id = Packet.uuid();
+    assert.ok(Number.isInteger(id), `not an integer: ${id}`);
+    assert.ok(id >= 0 && id <= 0xFFFF, `out of range: ${id}`);
+  }
+});
+
+test('Packet.uuid exercises the full 16-bit range with high diversity', function() {
+  // Sample size large enough that a CSPRNG over [0, 0xFFFF] almost certainly
+  // produces values in every quartile of the range. Catches regressions to a
+  // constant, low-entropy, or capped implementation.
+  const samples = new Set();
+  const quartile = [ 0, 0, 0, 0 ];
+  for (let i = 0; i < 5000; i++) {
+    const id = Packet.uuid();
+    samples.add(id);
+    quartile[Math.floor((id / 0x10000) * 4)]++;
+  }
+  assert.ok(samples.size > 4000, `expected high diversity, got ${samples.size}`);
+  for (let q = 0; q < 4; q++) {
+    assert.ok(quartile[q] > 200, `quartile ${q} underrepresented (${quartile[q]}/5000)`);
+  }
 });
 
 test('Packet.parse tolerates multiple questions', function() {

@@ -1,4 +1,5 @@
 const { debuglog } = require('node:util');
+const { randomInt } = require('node:crypto');
 const BufferReader = require('./lib/reader');
 const BufferWriter = require('./lib/writer');
 
@@ -145,11 +146,13 @@ Packet.EDNS_OPTION_CODE = {
 };
 
 /**
- * [uuid description]
- * @return {[type]} [description]
+ * Generate a cryptographically random 16-bit DNS transaction ID.
+ * RFC 5452 §3 — the full 16-bit space must be used from a CSPRNG to make
+ * response forgery / cache poisoning impractical.
+ * @return {number} integer in [0, 0xFFFF]
  */
 Packet.uuid = function() {
-  return Math.floor(Math.random() * 1e5);
+  return randomInt(0x10000);
 };
 
 /**
