@@ -24,6 +24,7 @@ declare class DNS extends EventEmitter {
   resolvePTR(domain: string): Promise<DNS.Packet>;
   resolveDNSKEY(domain: string): Promise<DNS.Packet>;
   resolveRRSIG(domain: string): Promise<DNS.Packet>;
+  resolveSOA(domain: string): Promise<DNS.Packet>;
 
   static createServer(options: DNS.CreateServerOptions): DNS.DnsServer;
   static createUDPServer(options?: DNS.UdpServerOptions | DNS.DnsHandler): DNS.UDPServer;

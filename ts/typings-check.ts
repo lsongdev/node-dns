@@ -26,6 +26,7 @@ void dns.resolveCNAME('www.example.com');
 void dns.resolvePTR('1.0.0.127.in-addr.arpa');
 void dns.resolveDNSKEY('example.com');
 void dns.resolveRRSIG('example.com');
+void dns.resolveSOA('example.com');
 
 dns.resolve('example.com').then((packet: DNS.Packet) => {
   const hdr: DNS.Packet.Header = packet.header;

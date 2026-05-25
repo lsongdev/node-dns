@@ -76,6 +76,10 @@ class DNS extends EventEmitter {
   resolveRRSIG(domain) {
     return this.resolve(domain, 'RRSIG');
   }
+
+  resolveSOA(domain) {
+    return this.resolve(domain, 'SOA');
+  }
 }
 
 DNS.TCPServer = TCPServer;

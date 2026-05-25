@@ -40,6 +40,47 @@ const dns = new dns2(options);
 })();
 ```
 
+The high-level `DNS` class exposes convenience methods for common record types:
+
+| Method | Record type | Key answer fields |
+|---|---|---|
+| `resolveA(domain)` | A | `address` |
+| `resolveAAAA(domain)` | AAAA | `address` |
+| `resolveMX(domain)` | MX | `exchange`, `priority` |
+| `resolveCNAME(domain)` | CNAME | `domain` |
+| `resolveSOA(domain)` | SOA | `primary`, `admin`, `serial`, `refresh`, `retry`, `expiration`, `minimum` |
+| `resolvePTR(domain)` | PTR | `domain` |
+| `resolveDNSKEY(domain)` | DNSKEY | `publicKey`, `algorithm` |
+| `resolveRRSIG(domain)` | RRSIG | varies |
+
+For any record type not listed above, use `dns.resolve(domain, 'TYPE')` directly.
+
+#### Example: SOA record lookup
+
+SOA (Start of Authority) records contain the authoritative zone information for a domain.
+If the authoritative nameserver returns the SOA record in the answer section, it will appear
+in `result.answers`. Otherwise check `result.authorities`.
+
+```js
+const dns2 = require('dns2');
+
+const dns = new dns2({ nameServers: ['8.8.8.8'] });
+
+(async () => {
+  const result = await dns.resolveSOA('google.com');
+  const soa = result.answers[0] || result.authorities[0];
+  if (soa) {
+    console.log(soa.primary);     // ns1.google.com
+    console.log(soa.admin);       // dns-admin.google.com
+    console.log(soa.serial);      // zone serial number
+    console.log(soa.refresh);     // refresh interval (seconds)
+    console.log(soa.retry);       // retry interval (seconds)
+    console.log(soa.expiration);  // expiry (seconds)
+    console.log(soa.minimum);     // minimum TTL (seconds)
+  }
+})();
+```
+
 Another way to instanciate dns2 UDP Client:
 
 ```js

@@ -1,5 +1,6 @@
 const assert = require('node:assert');
 const test = require('./test');
+const DNS = require('..');
 const {
   Packet,
   DOHClient,
@@ -8,7 +9,7 @@ const {
   createUDPServer,
   createTCPServer,
   createDOHServer,
-} = require('..');
+} = DNS;
 const udp = require('node:dgram');
 
 test('client/udp ignores stray response and resolves on matching id', async() => {
@@ -253,4 +254,43 @@ test('client/doh', async() => {
   assert.equal(res.header.qr, 1);
   assert.equal(res.header.ancount, 2);
   assert.equal(res.header.rcode, 0);
+});
+
+test('dns#resolveSOA returns SOA record via high-level DNS class', async() => {
+  const server = createUDPServer();
+  server.on('request', (request, send) => {
+    const response = Packet.createResponseFromRequest(request);
+    response.answers.push({
+      name       : request.questions[0].name,
+      type       : Packet.TYPE.SOA,
+      class      : Packet.CLASS.IN,
+      ttl        : 3600,
+      primary    : 'ns1.example.com',
+      admin      : 'hostmaster.example.com',
+      serial     : 2024010101,
+      refresh    : 7200,
+      retry      : 3600,
+      expiration : 1209600,
+      minimum    : 300,
+    });
+    send(response);
+  });
+  await server.listen(0, '127.0.0.1');
+  const { port } = server.address();
+
+  const dns = new DNS({ nameServers: [ '127.0.0.1' ], port });
+  const result = await dns.resolveSOA('example.com');
+  const soa = result.answers[0];
+
+  assert.ok(soa, 'SOA answer is present');
+  assert.equal(soa.type, Packet.TYPE.SOA);
+  assert.equal(soa.primary, 'ns1.example.com');
+  assert.equal(soa.admin, 'hostmaster.example.com');
+  assert.equal(soa.serial, 2024010101);
+  assert.equal(soa.refresh, 7200);
+  assert.equal(soa.retry, 3600);
+  assert.equal(soa.expiration, 1209600);
+  assert.equal(soa.minimum, 300);
+
+  await new Promise(resolve => server.close(resolve));
 });
