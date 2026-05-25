@@ -401,6 +401,61 @@ test('server/udp-tcp#simple-request-async-response', async() => {
   await server.close();
 });
 
+test('client/udp ignores stray response and resolves on matching id', async() => {
+  // Simulate the scenario from upstream issue #100: a stray UDP packet (e.g.
+  // late reply on a reused ephemeral port) arrives before the real response.
+  // The client must drop it and keep listening rather than asserting/crashing.
+  const server = udp.createSocket('udp4');
+  await new Promise(resolve => server.bind(0, '127.0.0.1', resolve));
+  const { port: serverPort } = server.address();
+
+  server.on('message', (msg, rinfo) => {
+    const request = Packet.parse(msg);
+
+    // Stray packet: same socket, but a different (wrong) transaction id.
+    const stray = new Packet();
+    stray.header.id = (request.header.id + 1) & 0xffff;
+    stray.header.qr = 1;
+    server.send(stray.toBuffer(), rinfo.port, rinfo.address);
+
+    // Real reply, slightly delayed so the stray definitely lands first.
+    const response = Packet.createResponseFromRequest(request);
+    response.answers.push({
+      name    : request.questions[0].name,
+      type    : Packet.TYPE.A,
+      class   : Packet.CLASS.IN,
+      ttl     : 300,
+      address : '1.2.3.4',
+    });
+    setTimeout(() => server.send(response.toBuffer(), rinfo.port, rinfo.address), 5);
+  });
+
+  const query = UDPClient({ dns: '127.0.0.1', port: serverPort, timeout: 2000 });
+  const reply = await query('stray.test');
+  assert.equal(reply.answers.length, 1);
+  assert.equal(reply.answers[0].address, '1.2.3.4');
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('client/udp times out when no matching response arrives', async() => {
+  // Server replies with only stray packets; client must time out, not hang.
+  const server = udp.createSocket('udp4');
+  await new Promise(resolve => server.bind(0, '127.0.0.1', resolve));
+  const { port: serverPort } = server.address();
+
+  server.on('message', (msg, rinfo) => {
+    const request = Packet.parse(msg);
+    const stray = new Packet();
+    stray.header.id = (request.header.id + 1) & 0xffff;
+    stray.header.qr = 1;
+    server.send(stray.toBuffer(), rinfo.port, rinfo.address);
+  });
+
+  const query = UDPClient({ dns: '127.0.0.1', port: serverPort, timeout: 100 });
+  await assert.rejects(query('timeout.test'), err => err.code === 'ETIMEDOUT');
+  await new Promise(resolve => server.close(resolve));
+});
+
 test('server/all#invalid-request', async() => {
   const server = createServer({
     doh    : true,
