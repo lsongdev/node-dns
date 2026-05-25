@@ -184,6 +184,48 @@ $ dig @127.0.0.1 -p5333 lsong.org
 Note that when implementing your own lookups, the contents of the query
 will be found in `request.questions[0].name`.
 
+### Responding with DNS Error Codes
+
+Use `Packet.RCODE` to send standard DNS error responses from your handler:
+
+| Constant | Value | Meaning |
+|---|---|---|
+| `Packet.RCODE.NOERROR`  | 0 | No error |
+| `Packet.RCODE.FORMERR`  | 1 | Format error |
+| `Packet.RCODE.SERVFAIL` | 2 | Server failure |
+| `Packet.RCODE.NXDOMAIN` | 3 | Non-existent domain |
+| `Packet.RCODE.NOTIMP`   | 4 | Not implemented |
+| `Packet.RCODE.REFUSED`  | 5 | Query refused |
+
+```js
+const dns2 = require('dns2');
+const { Packet } = dns2;
+
+const server = dns2.createServer({
+  udp: true,
+  handle: (request, send) => {
+    const response = Packet.createResponseFromRequest(request);
+    const [ question ] = request.questions;
+
+    if (question.name.endsWith('.internal')) {
+      // Refuse queries for internal names
+      response.header.rcode = Packet.RCODE.REFUSED;
+      return send(response);
+    }
+
+    if (!isKnownDomain(question.name)) {
+      // Domain does not exist
+      response.header.rcode = Packet.RCODE.NXDOMAIN;
+      return send(response);
+    }
+
+    // Normal answer ...
+    response.answers.push({ name: question.name, type: Packet.TYPE.A, class: Packet.CLASS.IN, ttl: 300, address: '1.2.3.4' });
+    send(response);
+  }
+});
+```
+
 ### Relevant Specifications
 
 + [RFC-1034 - Domain Names - Concepts and Facilities](https://tools.ietf.org/html/rfc1034)

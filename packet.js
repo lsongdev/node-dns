@@ -123,6 +123,19 @@ Packet.CLASS = {
   ANY : 0xFF,
 };
 /**
+ * DNS response codes
+ * @type {Object}
+ * @docs https://tools.ietf.org/html/rfc1035#section-4.1.1
+ */
+Packet.RCODE = {
+  NOERROR  : 0,
+  FORMERR  : 1,
+  SERVFAIL : 2,
+  NXDOMAIN : 3,
+  NOTIMP   : 4,
+  REFUSED  : 5,
+};
+/**
  * [EDNS_OPTION_CODE description]
  * @type {Object}
  * @docs https://tools.ietf.org/html/rfc6891#section-6.1.2
