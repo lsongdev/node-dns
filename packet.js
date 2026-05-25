@@ -399,9 +399,18 @@ Packet.Resource.encode = function(resource, writer) {
   })[0];
   if (encoder in Packet.Resource && Packet.Resource[encoder].encode) {
     return Packet.Resource[encoder].encode(resource, writer);
-  } else {
-    debug('node-dns > unknown encoder %s(%j)', encoder, resource.type);
   }
+  debug('node-dns > unknown encoder %s(%j)', encoder, resource.type);
+  // Fallback for unknown / decoder-only types: round-trip the raw RDATA the
+  // decoder preserved as `resource.data`. Without this, RDLENGTH and RDATA
+  // would be omitted entirely, truncating the wire format and corrupting any
+  // records that follow.
+  const data = Buffer.isBuffer(resource.data) ? resource.data : Buffer.alloc(0);
+  writer.write(data.length, 16);
+  for (const byte of data) {
+    writer.write(byte, 8);
+  }
+  return writer.toBuffer();
 };
 /**
  * [parse description]

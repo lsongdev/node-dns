@@ -671,6 +671,82 @@ test('Packet.RCODE is preserved through encode/parse round-trip', function() {
   }
 });
 
+test('Resource encode round-trips unknown type via raw data fallback', function() {
+  // C1 (AUDIT-RFC.md): the encoder must write RDLENGTH+RDATA for types it
+  // doesn't know how to serialize, otherwise the wire format is truncated.
+  // 0xABCD is intentionally not in Packet.TYPE.
+  const rdata = Buffer.from([ 0xDE, 0xAD, 0xBE, 0xEF, 0x00, 0x01 ]);
+  const packet = new Packet();
+  packet.header.qr = 1;
+  packet.answers.push({
+    name  : 'unknown.example',
+    type  : 0xABCD,
+    class : Packet.CLASS.IN,
+    ttl   : 60,
+    data  : rdata,
+  });
+  const parsed = Packet.parse(packet.toBuffer());
+  assert.equal(parsed.answers.length, 1);
+  assert.equal(parsed.answers[0].type, 0xABCD);
+  assert.equal(parsed.answers[0].class, Packet.CLASS.IN);
+  assert.equal(parsed.answers[0].ttl, 60);
+  assert.ok(Buffer.isBuffer(parsed.answers[0].data));
+  assert.deepEqual(parsed.answers[0].data, rdata);
+});
+
+test('Resource encode of unknown type does not corrupt following records', function() {
+  // The strongest signal for the C1 fix: without it, the missing RDLENGTH
+  // would make the parser interpret the next record's bytes as RDATA, and
+  // the A record below would never appear in `answers`.
+  const packet = new Packet();
+  packet.header.qr = 1;
+  packet.answers.push({
+    name  : 'unknown.example',
+    type  : 0xABCD,
+    class : Packet.CLASS.IN,
+    ttl   : 60,
+    data  : Buffer.from([ 0x01, 0x02, 0x03 ]),
+  });
+  packet.answers.push({
+    name    : 'after.example',
+    type    : Packet.TYPE.A,
+    class   : Packet.CLASS.IN,
+    ttl     : 30,
+    address : '203.0.113.9',
+  });
+  const parsed = Packet.parse(packet.toBuffer());
+  assert.equal(parsed.answers.length, 2);
+  assert.equal(parsed.answers[0].type, 0xABCD);
+  assert.equal(parsed.answers[1].type, Packet.TYPE.A);
+  assert.equal(parsed.answers[1].name, 'after.example');
+  assert.equal(parsed.answers[1].address, '203.0.113.9');
+});
+
+test('Resource encode of unknown type with no data writes empty RDATA', function() {
+  // When an unknown-type record has no `data`, encode should still emit a
+  // valid RDLENGTH=0 block so the packet remains parseable.
+  const packet = new Packet();
+  packet.header.qr = 1;
+  packet.answers.push({
+    name  : 'bare.example',
+    type  : 0xABCD,
+    class : Packet.CLASS.IN,
+    ttl   : 0,
+  });
+  packet.answers.push({
+    name    : 'follow.example',
+    type    : Packet.TYPE.A,
+    class   : Packet.CLASS.IN,
+    ttl     : 30,
+    address : '198.51.100.1',
+  });
+  const parsed = Packet.parse(packet.toBuffer());
+  assert.equal(parsed.answers.length, 2);
+  assert.equal(parsed.answers[0].type, 0xABCD);
+  assert.equal(parsed.answers[0].data.length, 0);
+  assert.equal(parsed.answers[1].address, '198.51.100.1');
+});
+
 test('Packet.parse tolerates multiple questions', function() {
   const request = new Packet();
   request.header.id = 0x9999;
