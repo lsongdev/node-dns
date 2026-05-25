@@ -508,3 +508,243 @@ test('server/all#maxConcurrent - excess requests receive SERVFAIL', async() => {
 
   await server.close();
 });
+
+// ---------------------------------------------------------------------------
+// PROXY protocol (issue #81) — UDP and TCP servers expose the real client IP
+// when sitting behind an L4 proxy (Nginx stream, HAProxy, etc).
+// ---------------------------------------------------------------------------
+
+const proxyProtocol = require('../lib/proxy-protocol');
+
+test('server/udp#proxyProtocol exposes real client address (v2 IPv4)', async() => {
+  const server = createUDPServer({ proxyProtocol: true });
+  let observedClient;
+  server.on('request', (request, send, info) => {
+    observedClient = info;
+    const response = Packet.createResponseFromRequest(request);
+    response.answers.push({
+      name    : request.questions[0].name,
+      type    : Packet.TYPE.A,
+      class   : Packet.CLASS.IN,
+      ttl     : 60,
+      address : '127.0.0.1',
+    });
+    send(response);
+  });
+  await server.listen(0, '127.0.0.1');
+  const { port: serverPort } = server.address();
+
+  // Build a DNS query and prepend a PROXY v2 IPv4 header naming a fake client.
+  const query = new Packet();
+  query.header.id = 0x4321;
+  query.header.rd = 1;
+  query.questions.push({ name: 'proxied.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  const header = proxyProtocol.buildV2Ipv4({
+    sourceAddress      : '203.0.113.77',
+    destinationAddress : '127.0.0.1',
+    sourcePort         : 50001,
+    destinationPort    : serverPort,
+    transport          : 'DGRAM',
+  });
+  const datagram = Buffer.concat([ header, query.toBuffer() ]);
+
+  const sender = udp.createSocket('udp4');
+  const reply = await new Promise((resolve, reject) => {
+    sender.on('message', msg => resolve(Packet.parse(msg)));
+    sender.on('error', reject);
+    sender.send(datagram, serverPort, '127.0.0.1');
+  });
+  await new Promise(resolve => sender.close(resolve));
+
+  assert.equal(reply.header.id, 0x4321);
+  assert.equal(reply.answers[0].address, '127.0.0.1');
+  assert.equal(observedClient.address, '203.0.113.77');
+  assert.equal(observedClient.port, 50001);
+  assert.equal(observedClient.proxy.version, 2);
+  assert.equal(observedClient.proxy.transport, 'DGRAM');
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('server/udp#proxyProtocol with missing header emits requestError', async() => {
+  const server = createUDPServer({ proxyProtocol: true });
+  let captured;
+  server.on('requestError', e => { captured = e; });
+  await server.listen(0, '127.0.0.1');
+  const { port: serverPort } = server.address();
+
+  const query = new Packet();
+  query.header.id = 1;
+  query.questions.push({ name: 'noheader.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+
+  const sender = udp.createSocket('udp4');
+  await new Promise(resolve => sender.send(query.toBuffer(), serverPort, '127.0.0.1', resolve));
+  // Give the server a moment to handle the datagram.
+  await new Promise(resolve => setTimeout(resolve, 20));
+  await new Promise(resolve => sender.close(resolve));
+
+  assert.ok(captured, 'expected requestError to fire');
+  assert.match(captured.message, /PROXY/);
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('server/tcp#proxyProtocol v1 exposes real client address', async() => {
+  const server = createTCPServer({ proxyProtocol: true });
+  let observed;
+  server.on('request', (request, send, client) => {
+    observed = { address: client.proxyAddress, port: client.proxyPort, proxy: client.proxy };
+    const response = Packet.createResponseFromRequest(request);
+    response.answers.push({
+      name    : request.questions[0].name,
+      type    : Packet.TYPE.A,
+      class   : Packet.CLASS.IN,
+      ttl     : 60,
+      address : '127.0.0.1',
+    });
+    send(response);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const { port: serverPort } = server.address();
+
+  const query = new Packet();
+  query.header.id = 0x1111;
+  query.questions.push({ name: 'proxied-tcp.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  const dnsMessage = query.toBuffer();
+  const length = Buffer.alloc(2);
+  length.writeUInt16BE(dnsMessage.length);
+  const proxyHeader = proxyProtocol.buildV1({
+    family             : 'TCP4',
+    sourceAddress      : '198.51.100.42',
+    destinationAddress : '127.0.0.1',
+    sourcePort         : 51515,
+    destinationPort    : serverPort,
+  });
+
+  const reply = await new Promise((resolve, reject) => {
+    const sock = tcp.connect(serverPort, '127.0.0.1', () => {
+      sock.write(Buffer.concat([ proxyHeader, length, dnsMessage ]));
+    });
+    const chunks = [];
+    sock.on('data', c => chunks.push(c));
+    sock.on('end', () => {
+      const buf = Buffer.concat(chunks);
+      resolve(Packet.parse(buf.slice(2)));
+    });
+    sock.on('error', reject);
+  });
+
+  assert.equal(reply.header.id, 0x1111);
+  assert.equal(reply.answers[0].address, '127.0.0.1');
+  assert.equal(observed.address, '198.51.100.42');
+  assert.equal(observed.port, 51515);
+  assert.equal(observed.proxy.version, 1);
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('server/tcp#proxyProtocol v2 exposes real client address', async() => {
+  const server = createTCPServer({ proxyProtocol: true });
+  let observed;
+  server.on('request', (request, send, client) => {
+    observed = { address: client.proxyAddress, port: client.proxyPort, version: client.proxy.version };
+    const response = Packet.createResponseFromRequest(request);
+    response.answers.push({
+      name    : request.questions[0].name,
+      type    : Packet.TYPE.A,
+      class   : Packet.CLASS.IN,
+      ttl     : 60,
+      address : '127.0.0.1',
+    });
+    send(response);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const { port: serverPort } = server.address();
+
+  const query = new Packet();
+  query.header.id = 0x2222;
+  query.questions.push({ name: 'proxied-tcp-v2.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  const dnsMessage = query.toBuffer();
+  const length = Buffer.alloc(2);
+  length.writeUInt16BE(dnsMessage.length);
+  const proxyHeader = proxyProtocol.buildV2Ipv4({
+    sourceAddress      : '198.51.100.99',
+    destinationAddress : '127.0.0.1',
+    sourcePort         : 52525,
+    destinationPort    : serverPort,
+  });
+
+  const reply = await new Promise((resolve, reject) => {
+    const sock = tcp.connect(serverPort, '127.0.0.1', () => {
+      sock.write(Buffer.concat([ proxyHeader, length, dnsMessage ]));
+    });
+    const chunks = [];
+    sock.on('data', c => chunks.push(c));
+    sock.on('end', () => resolve(Packet.parse(Buffer.concat(chunks).slice(2))));
+    sock.on('error', reject);
+  });
+
+  assert.equal(reply.header.id, 0x2222);
+  assert.equal(observed.address, '198.51.100.99');
+  assert.equal(observed.port, 52525);
+  assert.equal(observed.version, 2);
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('server/tcp#proxyProtocol with garbage prefix emits requestError', async() => {
+  const server = createTCPServer({ proxyProtocol: true });
+  let captured;
+  server.on('requestError', e => { captured = e; });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const { port: serverPort } = server.address();
+
+  await new Promise((resolve, reject) => {
+    const sock = tcp.connect(serverPort, '127.0.0.1', () => {
+      sock.end(Buffer.from('GET / HTTP/1.1\r\n\r\n', 'ascii'));
+    });
+    sock.on('close', resolve);
+    sock.on('error', reject);
+  });
+  // Give the server an event-loop tick to surface the error.
+  await new Promise(resolve => setTimeout(resolve, 20));
+
+  assert.ok(captured, 'expected requestError to fire');
+  assert.match(captured.message, /PROXY/);
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('server/udp/tcp without proxyProtocol still work normally', async() => {
+  // Regression guard: enabling the option is opt-in; default behavior unchanged.
+  const udpServer = createUDPServer();
+  udpServer.on('request', (request, send) => {
+    const response = Packet.createResponseFromRequest(request);
+    response.answers.push({
+      name    : request.questions[0].name,
+      type    : Packet.TYPE.A,
+      class   : Packet.CLASS.IN,
+      ttl     : 60,
+      address : '10.0.0.1',
+    });
+    send(response);
+  });
+  await udpServer.listen(0, '127.0.0.1');
+  const udpQuery = UDPClient({ dns: '127.0.0.1', port: udpServer.address().port });
+  const udpReply = await udpQuery('plain.test');
+  assert.equal(udpReply.answers[0].address, '10.0.0.1');
+  await new Promise(resolve => udpServer.close(resolve));
+
+  const tcpServer = createTCPServer();
+  tcpServer.on('request', (request, send) => {
+    const response = Packet.createResponseFromRequest(request);
+    response.answers.push({
+      name    : request.questions[0].name,
+      type    : Packet.TYPE.A,
+      class   : Packet.CLASS.IN,
+      ttl     : 60,
+      address : '10.0.0.2',
+    });
+    send(response);
+  });
+  await new Promise(resolve => tcpServer.listen(0, '127.0.0.1', resolve));
+  const tcpQuery = TCPClient({ dns: '127.0.0.1', port: tcpServer.address().port });
+  const tcpReply = await tcpQuery('plain.test');
+  assert.equal(tcpReply.answers[0].address, '10.0.0.2');
+  await new Promise(resolve => tcpServer.close(resolve));
+});

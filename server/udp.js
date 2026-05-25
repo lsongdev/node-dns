@@ -1,5 +1,6 @@
 const udp = require('node:dgram');
 const Packet = require('../packet');
+const proxyProtocol = require('../lib/proxy-protocol');
 
 /**
  * [Server description]
@@ -9,10 +10,13 @@ const Packet = require('../packet');
 class Server extends udp.Socket {
   constructor(options) {
     let type = 'udp4';
-    if (typeof options === 'object') {
+    let proxyProtocolEnabled = false;
+    if (typeof options === 'object' && options !== null) {
       type = options.type ?? type;
+      proxyProtocolEnabled = options.proxyProtocol ?? false;
     }
     super(type);
+    this.proxyProtocol = proxyProtocolEnabled;
     if (typeof options === 'function') {
       this.on('request', options);
     }
@@ -21,8 +25,28 @@ class Server extends udp.Socket {
 
   handle(data, rinfo) {
     try {
+      // Response is always sent back to the immediate sender (the proxy when
+      // proxyProtocol is enabled); the parsed client info is exposed to the
+      // request handler so it can log/authorize against the real peer.
+      const responder = rinfo;
+      let clientInfo = rinfo;
+      if (this.proxyProtocol) {
+        const parsed = proxyProtocol.parse(data);
+        if (!parsed) throw new Error('PROXY protocol: incomplete header');
+        if (parsed.header.command === 'PROXY') {
+          clientInfo = {
+            ...rinfo,
+            address : parsed.header.sourceAddress,
+            port    : parsed.header.sourcePort,
+            proxy   : parsed.header,
+          };
+        } else {
+          clientInfo = { ...rinfo, proxy: parsed.header };
+        }
+        data = data.slice(parsed.headerLength);
+      }
       const message = Packet.parse(data);
-      this.emit('request', message, this.response.bind(this, rinfo), rinfo);
+      this.emit('request', message, this.response.bind(this, responder), clientInfo);
     } catch (e) {
       this.emit('requestError', e);
     }
