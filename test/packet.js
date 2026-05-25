@@ -607,17 +607,7 @@ test('Packet.Name encode filters empty labels (trailing dot)', function() {
   assert.deepEqual(a, b);
 });
 
-// ---------------------------------------------------------------------------
-// Known issues — these tests express the CORRECT behavior and currently fail.
-// Un-skip after the corresponding source fix lands.
-// ---------------------------------------------------------------------------
-
-test.skip('BUG: Resource#CAA round-trip via Packet.parse', function() {
-  // Packet.Resource.CAA has no decode method, so Packet.Resource.parse calls
-  // `Packet.Resource.CAA.decode.call(...)` which throws TypeError. The outer
-  // section-loop swallows the exception (debug log only), and the answer is
-  // silently dropped. Fix: add a CAA decoder that reads flags, tagLen, tag,
-  // and value, mirroring the encoder layout.
+test('Resource#CAA round-trip via Packet.parse', function() {
   const packet = new Packet();
   packet.header.qr = 1;
   packet.answers.push({
@@ -636,12 +626,7 @@ test.skip('BUG: Resource#CAA round-trip via Packet.parse', function() {
   assert.equal(parsed.answers[0].value, 'letsencrypt.org');
 });
 
-test.skip('BUG: Packet.createResponseFromRequest does not mutate request', function() {
-  // `new Packet(request)` returns the request itself when it's already a
-  // Packet instance, so createResponseFromRequest sets qr=1 and clears
-  // additionals on the ORIGINAL request. Callers reading request fields after
-  // building a response see the mutation. Fix: build a fresh Packet and copy
-  // the needed fields (id, questions) explicitly.
+test('Packet.createResponseFromRequest does not mutate request', function() {
   const request = new Packet();
   request.header.id = 0x1234;
   request.questions.push({ name: 'x.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
@@ -657,14 +642,7 @@ test.skip('BUG: Packet.createResponseFromRequest does not mutate request', funct
     'request.additionals should not be cleared');
 });
 
-test.skip('BUG: Reader.read across non-aligned multi-byte offsets', function() {
-  // BufferReader.read uses ceil(length/8) to decide how many bytes to fetch,
-  // ignoring the offset-within-byte. When length > 8 bits and the offset isn't
-  // byte-aligned, the read straddles an additional byte that's never fetched,
-  // and the trailing bits read back as 0. This codepath isn't hit by current
-  // production parsers (all multi-byte reads happen at byte-aligned offsets),
-  // but the reader's contract should still hold. Fix: byteCount =
-  // ceil((length + (offset % 8)) / 8).
+test('Reader.read across non-aligned multi-byte offsets', function() {
   // 0xAB=10101011, 0xCD=11001101, 0xEF=11101111
   // After consuming 4 bits, bits 4-19 are: 1011 11001101 1110 = 0xBCDE
   const reader = new Packet.Reader(Buffer.from([ 0xAB, 0xCD, 0xEF ]));

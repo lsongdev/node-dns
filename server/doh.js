@@ -20,11 +20,11 @@ const decodeBase64URL = str => {
 };
 
 const readStream = stream => new Promise((resolve, reject) => {
-  let buffer = '';
+  const chunks = [];
   stream
     .on('error', reject)
-    .on('data', chunk => { buffer += chunk; })
-    .on('end', () => resolve(buffer));
+    .on('data', chunk => chunks.push(chunk))
+    .on('end', () => resolve(Buffer.concat(chunks)));
 });
 
 class Server extends EventEmitter {

@@ -198,13 +198,7 @@ test('server/doh#GET via DOHClient end-to-end', async() => {
   server.close();
 });
 
-test.skip('BUG: server/doh#POST end-to-end', async() => {
-  // server/doh.js#readStream collects the request body via string
-  // concatenation (`buffer += chunk`), which decodes incoming chunks as utf-8.
-  // Binary DNS payloads contain bytes that aren't valid utf-8 and get mangled,
-  // so Packet.parse throws and the server destroys the socket — the client
-  // sees a "socket hang up". Fix: collect chunks as Buffer (push into an
-  // array, then Buffer.concat on 'end').
+test('server/doh#POST end-to-end', async() => {
   const server = createDOHServer();
   server.on('request', (request, send) => {
     const response = Packet.createResponseFromRequest(request);

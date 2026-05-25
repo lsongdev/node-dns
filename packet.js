@@ -844,6 +844,17 @@ Packet.Resource.CAA = {
     });
     return writer.toBuffer();
   },
+  decode: function(reader, length) {
+    this.flags = reader.read(8);
+    const tagLength = reader.read(8);
+    const bytes = [];
+    let remaining = length - 2;
+    while (remaining--) bytes.push(reader.read(8));
+    const buffer = Buffer.from(bytes);
+    this.tag = buffer.slice(0, tagLength).toString('utf8');
+    this.value = buffer.slice(tagLength).toString('utf8');
+    return this;
+  },
 };
 
 /**
@@ -954,9 +965,14 @@ Packet.Reader = BufferReader;
 Packet.Writer = BufferWriter;
 
 Packet.createResponseFromRequest = function(request) {
-  const response = new Packet(request);
-  response.header.qr = 1;
-  response.additionals = [];
+  const response = new Packet();
+  response.header = new Packet.Header({
+    id     : request.header.id,
+    opcode : request.header.opcode,
+    rd     : request.header.rd,
+    qr     : 1,
+  });
+  response.questions = request.questions.slice();
   return response;
 };
 

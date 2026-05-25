@@ -66,9 +66,6 @@ test('client/udp times out when no matching response arrives', async() => {
   await new Promise(resolve => server.close(resolve));
 });
 
-// createResponseFromRequest mutates the request in place (clears additionals);
-// these tests snapshot relevant fields BEFORE building the response.
-
 test('client/udp sends ECS additional when clientIp is set', async() => {
   const server = createUDPServer();
   let ednsRecord;
