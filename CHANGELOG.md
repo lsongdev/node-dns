@@ -4,6 +4,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Unreleased
 
+### 2.2.1 - 2026-05-25
+
 - fix(packet): use crypto.randomInt for Packet.uuid (RFC 5452)
 - fix(packet): preserve RDLENGTH+RDATA for unknown RR types
 

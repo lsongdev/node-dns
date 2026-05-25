@@ -43,10 +43,10 @@ jobs:
         with:
           node-version: "24"
       - uses: actions/checkout@v6
-      - run: npm ci || npm install
+      - run: npm ci
       - run: npm test
 
-  create-release:
+  release:
     needs: [build, version]
     runs-on: ubuntu-latest
     permissions:
@@ -77,3 +77,18 @@ jobs:
           tag_name: v${{ needs.version.outputs.version }}
           name: ${{ needs.version.outputs.version }}
           generate_release_notes: false
+
+  publish:
+    needs: release
+    runs-on: ubuntu-latest
+    permissions:
+      contents: read
+      id-token: write
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          registry-url: https://registry.npmjs.org/
+      - run: npm ci
+      - run: npm publish --provenance
