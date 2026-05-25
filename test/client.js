@@ -291,3 +291,43 @@ test('dns#resolveSOA returns SOA record via high-level DNS class', async() => {
 
   await new Promise(resolve => server.close(resolve));
 });
+
+test('dns#constructor accepts dns shorthand alias for nameServers', async() => {
+  const server = createUDPServer();
+  server.on('request', (request, send) => {
+    const response = Packet.createResponseFromRequest(request);
+    response.answers.push({
+      name    : request.questions[0].name,
+      type    : Packet.TYPE.A,
+      class   : Packet.CLASS.IN,
+      ttl     : 60,
+      address : '1.2.3.4',
+    });
+    send(response);
+  });
+  await server.listen(0, '127.0.0.1');
+  const { port } = server.address();
+
+  // Use `dns` string shorthand — this is what the docs showed and what broke.
+  const dns = new DNS({ dns: '127.0.0.1', port });
+  assert.deepEqual(dns.nameServers, [ '127.0.0.1' ],
+    '`dns` string is normalised to nameServers array');
+
+  const result = await dns.resolveA('alias.test');
+  assert.equal(result.answers[0].address, '1.2.3.4',
+    'query reaches the intended server, promise settles');
+
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('dns#constructor accepts dns array shorthand for nameServers', () => {
+  const dns = new DNS({ dns: [ '1.1.1.1', '8.8.8.8' ] });
+  assert.deepEqual(dns.nameServers, [ '1.1.1.1', '8.8.8.8' ],
+    '`dns` array is normalised to nameServers');
+});
+
+test('dns#constructor dns alias does not override explicit nameServers', () => {
+  const dns = new DNS({ dns: '1.1.1.1', nameServers: [ '9.9.9.9' ] });
+  assert.deepEqual(dns.nameServers, [ '9.9.9.9' ],
+    'explicit nameServers takes precedence over dns alias');
+});

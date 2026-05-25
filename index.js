@@ -15,8 +15,13 @@ const EventEmitter = require('node:events');
  * @docs https://tools.ietf.org/html/rfc1035
  */
 class DNS extends EventEmitter {
-  constructor(options) {
+  constructor(options = {}) {
     super();
+    // Accept `dns` as a shorthand alias for `nameServers` so that
+    // `new DNS({ dns: '8.8.8.8' })` works as documented and intuited.
+    if (options.dns != null && options.nameServers == null) {
+      options = Object.assign({}, options, { nameServers: [].concat(options.dns) });
+    }
     Object.assign(this, {
       port             : 53,
       retries          : 3,

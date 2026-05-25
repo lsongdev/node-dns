@@ -1,7 +1,6 @@
 # dns2 
 
-![NPM version](https://img.shields.io/npm/v/dns2.svg?style=flat)
-[![Node.js CI](https://github.com/song940/node-dns/actions/workflows/node.js.yml/badge.svg)](https://github.com/song940/node-dns/actions/workflows/node.js.yml)
+![NPM version][npm-img] [![Build Status][ci-img]][ci-url]
 
 > A DNS Server and Client Implementation in Pure JavaScript with no dependencies.
 
@@ -27,10 +26,9 @@ DNS client will use UDP by default.
 const dns2 = require('dns2');
 
 const options = {
-  // available options
-  // dns: dns server ip address or hostname (string),
-  // port: dns server port (number),
-  // recursive: Recursion Desired flag (boolean, default true, since > v1.4.2)
+  // nameServers: ['8.8.8.8']  — array of DNS server IPs (default: Google + 114dns)
+  // port: 53                  — DNS server port (number)
+  // recursive: true           — Recursion Desired flag (boolean, default true)
 };
 const dns = new dns2(options);
 
@@ -311,3 +309,7 @@ AUTHORS OR COPYRIGHT HOLDERS BE LIABLE FOR ANY CLAIM, DAMAGES OR OTHER
 LIABILITY, WHETHER IN AN ACTION OF CONTRACT, TORT OR OTHERWISE, ARISING FROM,
 OUT OF OR IN CONNECTION WITH THE SOFTWARE OR THE USE OR OTHER DEALINGS IN
 THE SOFTWARE.
+
+[npm-img]: https://img.shields.io/npm/v/dns2.svg?style=flat
+[ci-img]: https://github.com/song940/node-dns/actions/workflows/node.js.yml/badge.svg
+[ci-url]: https://github.com/song940/node-dns/actions/workflows/node.js.yml

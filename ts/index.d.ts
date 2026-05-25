@@ -301,6 +301,8 @@ declare namespace DNS {
     timeout: number;
     recursive: boolean;
     resolverProtocol: 'UDP' | 'TCP' | 'DOH' | 'Google';
+    /** Shorthand alias for `nameServers`. A single IP string or an array. */
+    dns?: string | string[];
     nameServers: string[];
     rootServers: string[];
   }
