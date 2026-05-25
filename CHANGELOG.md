@@ -4,6 +4,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Unreleased
 
+### 2.2.0 - 2026-05-25
+
 - feat(client): add retryOverTCP option #117
 - feat(client): support `dns` argument, fix docs #116
 - feat: add resolveSOA #115

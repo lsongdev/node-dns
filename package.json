@@ -1,9 +1,17 @@
 {
   "name": "dns2",
-  "version": "2.1.0",
+  "version": "2.2.0",
   "description": "A DNS Server and Client Implementation in Pure JavaScript with no dependencies.",
   "main": "index.js",
   "types": "ts/index.d.ts",
+  "files": [
+    "lib",
+    "client",
+    "server",
+    "packet.js",
+    "example",
+    "ts"
+  ],
   "scripts": {
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage",
@@ -27,7 +35,8 @@
   "contributors": [
     "Andris Reinman <andris.reinman@gmail.com>",
     "Eviltik <eviltik@gmail.com>",
-    "Martin Heidegger <martin.heidegger@gmail.com>"
+    "Martin Heidegger <martin.heidegger@gmail.com>",
+    "Matt Simerson <matt@tnpi.net>"
   ],
   "license": "MIT",
   "repository": {
