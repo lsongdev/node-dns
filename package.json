@@ -5,8 +5,8 @@
   "main": "index.js",
   "scripts": {
     "test": "node test",
-    "lint": "eslint .",
-    "fix": "eslint . --fix",
+    "lint": "npx eslint .",
+    "lint:fix": "npx eslint . --fix",
     "example-server-udp": "node example/server/udp.js",
     "example-server-tcp": "node example/server/tcp.js",
     "example-server-doh": "node example/server/doh.js",

@@ -284,7 +284,7 @@ test('server/doh#cors - default', async function() {
   });
   const { headers } = await get(`http://localhost:${port}`);
   assert.equal(headers['access-control-allow-origin'], '*');
-  server.server.close();
+  server.close();
 });
 
 test('server/doh#cors - no cors', async function() {
@@ -297,7 +297,7 @@ test('server/doh#cors - no cors', async function() {
   });
   const { headers } = await get(`http://localhost:${port}`);
   assert.equal(headers['access-control-allow-origin'], undefined);
-  server.server.close();
+  server.close();
 });
 
 test('server/doh#cors - cors origin', async function() {
@@ -311,7 +311,7 @@ test('server/doh#cors - cors origin', async function() {
   const { headers } = await get(`http://localhost:${port}`);
   assert.equal(headers['access-control-allow-origin'], 'some.domain');
   assert.equal(headers.vary, 'Origin');
-  server.server.close();
+  server.close();
 });
 
 test('server/doh#cors - cors function', async function() {
@@ -335,7 +335,7 @@ test('server/doh#cors - cors function', async function() {
   headers = (await get(`http://localhost:${port}`, { headers: { origin: 'b.domain' } })).headers;
   assert.equal(headers['access-control-allow-origin'], 'false');
   assert.equal(headers.vary, 'Origin');
-  server.server.close();
+  server.close();
 });
 
 // test('server/all#simple-request', async() => {
@@ -459,9 +459,13 @@ function get(url, options) {
 }
 
 test('client/doh', async() => {
-  const res = await DOHClient({
-    dns: 'https://1.0.0.1/dns-query',
-  })('cdnjs.com', 'NS');
+  const timeout = new Promise((resolve, reject) =>
+    setTimeout(() => reject(new Error('DOH client timed out after 10s')), 10000).unref(),
+  );
+  const res = await Promise.race([
+    DOHClient({ dns: 'https://1.0.0.1/dns-query' })('cdnjs.com', 'NS'),
+    timeout,
+  ]);
 
   // console.log(res);
   assert.equal(res.answers.length, 2);

@@ -139,6 +139,7 @@ class Server extends EventEmitter {
   }
 
   close() {
+    this.server.closeIdleConnections();
     return this.server.close();
   }
 }
