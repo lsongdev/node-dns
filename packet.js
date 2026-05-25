@@ -21,7 +21,6 @@ const fromIPv6 = (address) => {
   }
   // node js 10 does not support Array.prototype.flatMap
   if (!Array.prototype.flatMap) {
-    // eslint-disable-next-line no-extend-native
     Array.prototype.flatMap = function(f, ctx) {
       return this.reduce((r, x, i, a) => r.concat(f.call(ctx, x, i, a)), []);
     };
@@ -181,7 +180,6 @@ Object.defineProperty(Packet.prototype, 'recursive', {
   },
   set(yn) {
     this.header.rd = +yn;
-    return this.header.rd;
   },
 });
 
@@ -606,7 +604,7 @@ Packet.Resource.SPF =
 Packet.Resource.TXT = {
   decode: function(reader, length) {
     const parts = [];
-    let bytesRead = 0; let chunkLength = 0;
+    let bytesRead = 0; let chunkLength;
 
     while (bytesRead < length) {
       chunkLength = reader.read(8); // text length
