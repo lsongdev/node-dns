@@ -1,0 +1,29 @@
+name: TypeScript types
+
+on:
+  push:
+    branches: [master, main]
+    paths:
+      - 'ts/index.d.ts'
+      - 'index.js'
+      - 'ts/typings-check.ts'
+      - 'ts/tsconfig.json'
+      - '.github/workflows/types.yml'
+  pull_request:
+    types: [opened, synchronize, reopened]
+
+permissions:
+  contents: read
+
+jobs:
+  typecheck:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-node@v6
+        with:
+          node-version: 24
+      - name: Install type-check dependencies
+        run: npm install --no-save typescript @types/node
+      - name: Check index.d.ts
+        run: npx tsc --project ts/tsconfig.json

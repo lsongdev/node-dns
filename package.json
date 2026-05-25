@@ -3,6 +3,7 @@
   "version": "2.1.0",
   "description": "A DNS Server and Client Implementation in Pure JavaScript with no dependencies.",
   "main": "index.js",
+  "types": "ts/index.d.ts",
   "scripts": {
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage",
