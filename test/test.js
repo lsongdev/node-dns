@@ -31,4 +31,11 @@ function color(str, c) {
   return `\x1b[${c}m${str}\x1b[0m`;
 }
 
+test.skip = (title, _fn) => {
+  previous = previous.then(() => {
+    console.log(color(` ⊘  ${title} (skipped)`, 33));
+  });
+  return previous;
+};
+
 module.exports = test;

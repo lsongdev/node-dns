@@ -1,12 +1,31 @@
+# Changelog
 
-### 2026-05-26
+The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
-- client/udp.js refactors
-  1. Mismatched ids are dropped and the listener keeps waiting — stray packets no longer crash the process.
-  2. Sender filtering. Reject any packet whose rinfo.port isn't the configured resolver port; additionally enforce rinfo.address when dns is an IP literal (using net.isIP).
-  3. Defensive Packet.parse. Wrapped in try/catch so a malformed stray packet doesn't reject the promise — it's dropped with a debug log.
-  4. Timeout. New timeout option (default 10s, set 0 to disable). On expiry the promise rejects with code: 'ETIMEDOUT'. Timer is .unref()-ed so it never holds the event loop open.
-  5. Full 16-bit transaction IDs. query.header.id = crypto.randomInt(0x10000), 6.5× the keyspace and uses a CSPRNG.
-  6. Proper cleanup. Single cleanup() clears the timer, removes both listeners, and closes the socket; settled guard prevents double-resolve/reject from racing message + timeout.
-  7. Error event handled. Socket errors now reject the promise instead of going unhandled.
+### Unreleased
 
+- test: split tests into 3 files, add 45 new tests
+- feat(client/doh): HTTP/2 transport #89
+- feat(client/tcp): DNS-over-TLS support #88
+- feat(packet): IPv6 subnet support in `EDNS.ECS.decode`
+- feat(client/udp): configurable `timeout` (default 10s, `0` disables); rejects with `ETIMEDOUT`
+- fix(client/udp): drop mismatched-id packets instead of crashing
+- fix(client/udp): reject packets from non-resolver senders (port + IP literal via `net.isIP`)
+- fix(client/udp): defensive `Packet.parse` — malformed strays are dropped, not rejected
+- fix(client/udp): full 16-bit transaction ids via `crypto.randomInt`
+- fix(client/udp): single cleanup with settled-guard; socket `error` is handled
+- fix(client/tcp): empty response when server reply is async
+- fix(client/doh): enforce RFC 8484 `dns` query parameter, drop invalid pathname auto-completion #95
+- fix(server/udp): more resilient `udp4` default
+- fix(packet): guard against ERR_BUFFER_OUT_OF_BOUNDS on malformed requests
+- change(api): `resolve()` and UDP client take an options object (was `clientIp` positional) #84
+- dep(eslint): upgrade to v10
+- ci: modernize GitHub Actions workflows; add release.yml
+
+### 2.1.0 - 2024-06-26
+
+- feat(packet): DNSKEY record support
+- feat(packet): RRSIG record support (decode only)
+- feat(packet): `flatMap` support
+- fix(packet): ensure compressed IPv6 is valid #70
+- doc(README): correct `server.listen` options

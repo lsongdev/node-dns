@@ -4,7 +4,9 @@
   "description": "A DNS Server and Client Implementation in Pure JavaScript with no dependencies.",
   "main": "index.js",
   "scripts": {
-    "test": "node test",
+    "test": "node --test",
+    "test:coverage": "node --test --experimental-test-coverage",
+    "test:coverage:lcov": "mkdir -p coverage && node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=coverage/lcov.info",
     "lint": "npx eslint .",
     "lint:fix": "npx eslint . --fix",
     "example-server-udp": "node example/server/udp.js",

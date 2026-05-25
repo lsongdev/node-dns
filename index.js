@@ -7,7 +7,7 @@ const {
   createDOHServer,
   createServer,
 } = require('./server');
-const EventEmitter = require('events');
+const EventEmitter = require('node:events');
 
 /**
  * [DNS description]

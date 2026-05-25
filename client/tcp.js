@@ -1,5 +1,5 @@
-const tls = require('tls');
-const tcp = require('net');
+const tls = require('node:tls');
+const tcp = require('node:net');
 const Packet = require('../packet');
 
 const makeQuery = ({ name, type = 'A', cls = Packet.CLASS.IN, clientIp, recursive = true }) => {

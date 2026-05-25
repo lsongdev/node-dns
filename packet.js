@@ -1,4 +1,4 @@
-const { debuglog } = require('util');
+const { debuglog } = require('node:util');
 const BufferReader = require('./lib/reader');
 const BufferWriter = require('./lib/writer');
 

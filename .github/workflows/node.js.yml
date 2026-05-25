@@ -1,9 +1,13 @@
+# This workflow will do a clean install of node dependencies, build the source code and run tests across different versions of node
+# For more information see: https://help.github.com/actions/language-and-framework-guides/using-nodejs-with-github-actions
+
 name: Node.js CI
 
 on:
   push:
-    branches: [master, main]
+    branches: [ master ]
   pull_request:
+    branches: [ master ]
     types: [opened, synchronize, reopened]
 
 permissions:
@@ -11,31 +15,18 @@ permissions:
 
 jobs:
   build:
-    needs: [get-lts]
+
     runs-on: ubuntu-latest
+
     strategy:
       matrix:
-        node-version: ${{ fromJson(needs.get-lts.outputs.lts) }}
+        node-version: [22, 24]
 
     steps:
-      - uses: actions/checkout@v6
-      - name: Use Node.js ${{ matrix.node-version }}
-        uses: actions/setup-node@v6
-        with:
-          node-version: ${{ matrix.node-version }}
-      - run: npm ci
-      - run: npm test
-
-  get-lts:
-    runs-on: ubuntu-latest
-    permissions:
-      contents: read
-    steps:
-      - id: get
-        uses: msimerson/node-lts-versions@v1
-    outputs:
-      active: ${{ steps.get.outputs.active }}
-      maintenance: ${{ steps.get.outputs.maintenance }}
-      lts: ${{ steps.get.outputs.lts }}
-      current: ${{ steps.get.outputs.current }}
-      min: ${{ steps.get.outputs.min }}
+    - uses: actions/checkout@v6
+    - name: Use Node.js ${{ matrix.node-version }}
+      uses: actions/setup-node@v6
+      with:
+        node-version: ${{ matrix.node-version }}
+    - run: npm ci
+    - run: npm test

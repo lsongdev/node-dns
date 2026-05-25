@@ -1,9 +1,9 @@
-const http = require('http');
-const https = require('https');
-const { URL } = require('url');
+const http = require('node:http');
+const https = require('node:https');
+const { URL } = require('node:url');
 const Packet = require('../packet');
-const EventEmitter = require('events');
-const { debuglog } = require('util');
+const EventEmitter = require('node:events');
+const { debuglog } = require('node:util');
 
 const debug = debuglog('dns2-server');
 

@@ -1,4 +1,4 @@
-const udp = require('dgram');
+const udp = require('node:dgram');
 const Packet = require('../packet');
 
 /**

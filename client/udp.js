@@ -1,8 +1,8 @@
-const udp = require('dgram');
-const net = require('net');
-const crypto = require('crypto');
+const udp = require('node:dgram');
+const net = require('node:net');
+const crypto = require('node:crypto');
 const Packet = require('../packet');
-const { debuglog } = require('util');
+const { debuglog } = require('node:util');
 
 const debug = debuglog('dns2');
 

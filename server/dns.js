@@ -1,4 +1,4 @@
-const EventEmitter = require('events');
+const EventEmitter = require('node:events');
 const DOHServer = require('./doh');
 const TCPServer = require('./tcp');
 const UDPServer = require('./udp');

@@ -1,4 +1,4 @@
-const tcp = require('net');
+const tcp = require('node:net');
 const Packet = require('../packet');
 
 class Server extends tcp.Server {
