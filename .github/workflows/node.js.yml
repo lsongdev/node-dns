@@ -10,7 +10,7 @@ permissions:
   contents: read
 
 jobs:
-  build:
+  ubuntu:
     needs: [get-lts]
     runs-on: ubuntu-latest
     strategy:

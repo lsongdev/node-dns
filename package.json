@@ -1,6 +1,6 @@
 {
   "name": "dns2",
-  "version": "2.2.0",
+  "version": "2.2.1",
   "description": "A DNS Server and Client Implementation in Pure JavaScript with no dependencies.",
   "main": "index.js",
   "types": "ts/index.d.ts",
@@ -41,12 +41,12 @@
   "license": "MIT",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/song940/node-dns.git"
+    "url": "git+https://github.com/lsongdev/node-dns.git"
   },
   "bugs": {
-    "url": "https://github.com/song940/node-dns/issues"
+    "url": "https://github.com/lsongdev/node-dns/issues"
   },
-  "homepage": "https://github.com/song940/node-dns#readme",
+  "homepage": "https://github.com/lsongdev/node-dns#readme",
   "devDependencies": {
     "@eslint/js": "^10.0.1",
     "@stylistic/eslint-plugin": "^5.10.0",
