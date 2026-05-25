@@ -407,3 +407,48 @@ test('server/all#invalid-request', async() => {
 
   await server.close();
 });
+
+test('server/all#handler can respond with RCODE error codes', async() => {
+  const server = createServer({
+    udp : true,
+    tcp : true,
+    handle(request, send) {
+      const response = Packet.createResponseFromRequest(request);
+      const [ question ] = request.questions;
+      if (question.name === 'refused.test') {
+        response.header.rcode = Packet.RCODE.REFUSED;
+      } else if (question.name === 'nxdomain.test') {
+        response.header.rcode = Packet.RCODE.NXDOMAIN;
+      } else if (question.name === 'servfail.test') {
+        response.header.rcode = Packet.RCODE.SERVFAIL;
+      }
+      send(response);
+    },
+  });
+  const servers = await server.listen();
+
+  const udpClient = UDPClient({ dns: '127.0.0.1', port: servers.udp.port });
+  const tcpClient = TCPClient({ dns: '127.0.0.1', port: servers.tcp.port });
+
+  const udpRefused = await udpClient('refused.test');
+  const tcpRefused = await tcpClient('refused.test');
+  const udpNxdomain = await udpClient('nxdomain.test');
+  const tcpNxdomain = await tcpClient('nxdomain.test');
+  const udpServfail = await udpClient('servfail.test');
+  const tcpServfail = await tcpClient('servfail.test');
+
+  assert.equal(udpRefused.header.rcode, Packet.RCODE.REFUSED, 'UDP REFUSED');
+  assert.equal(tcpRefused.header.rcode, Packet.RCODE.REFUSED, 'TCP REFUSED');
+  assert.equal(udpNxdomain.header.rcode, Packet.RCODE.NXDOMAIN, 'UDP NXDOMAIN');
+  assert.equal(tcpNxdomain.header.rcode, Packet.RCODE.NXDOMAIN, 'TCP NXDOMAIN');
+  assert.equal(udpServfail.header.rcode, Packet.RCODE.SERVFAIL, 'UDP SERVFAIL');
+  assert.equal(tcpServfail.header.rcode, Packet.RCODE.SERVFAIL, 'TCP SERVFAIL');
+
+  // All error responses must still be marked as responses (qr=1) and carry
+  // the question back, with no answers.
+  assert.equal(udpRefused.header.qr, 1);
+  assert.equal(udpRefused.questions[0].name, 'refused.test');
+  assert.equal(udpRefused.answers.length, 0);
+
+  await server.close();
+});

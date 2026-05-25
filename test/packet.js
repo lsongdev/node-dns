@@ -672,6 +672,27 @@ test.skip('BUG: Reader.read across non-aligned multi-byte offsets', function() {
   assert.equal(reader.read(16), 0xBCDE);
 });
 
+test('Packet.RCODE contains all standard error codes', function() {
+  assert.equal(Packet.RCODE.NOERROR, 0);
+  assert.equal(Packet.RCODE.FORMERR, 1);
+  assert.equal(Packet.RCODE.SERVFAIL, 2);
+  assert.equal(Packet.RCODE.NXDOMAIN, 3);
+  assert.equal(Packet.RCODE.NOTIMP, 4);
+  assert.equal(Packet.RCODE.REFUSED, 5);
+});
+
+test('Packet.RCODE is preserved through encode/parse round-trip', function() {
+  for (const [ name, code ] of Object.entries(Packet.RCODE)) {
+    const pkt = new Packet();
+    pkt.header.id = 0x1234;
+    pkt.header.qr = 1;
+    pkt.header.rcode = code;
+    const parsed = Packet.parse(pkt.toBuffer());
+    assert.equal(parsed.header.rcode, code,
+      `RCODE.${name} (${code}) did not survive encode→parse`);
+  }
+});
+
 test('Packet.parse tolerates multiple questions', function() {
   const request = new Packet();
   request.header.id = 0x9999;
