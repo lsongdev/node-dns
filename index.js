@@ -27,6 +27,7 @@ class DNS extends EventEmitter {
       retries          : 3,
       timeout          : 3,
       recursive        : true,
+      retryOverTCP     : true,
       resolverProtocol : 'UDP',
       nameServers      : [
         '8.8.8.8',
@@ -46,10 +47,10 @@ class DNS extends EventEmitter {
    * @param {*} cls
    */
   resolve(domain, type = 'ANY', cls = DNS.Packet.CLASS.IN, options = {}) {
-    const { port, nameServers, resolverProtocol = 'UDP' } = this;
+    const { port, nameServers, resolverProtocol = 'UDP', retryOverTCP } = this;
     const createResolver = DNS[resolverProtocol + 'Client'];
     return Promise.race(nameServers.map(address => {
-      const resolve = createResolver({ dns: address, port });
+      const resolve = createResolver({ dns: address, port, retryOverTCP });
       return resolve(domain, type, cls, options);
     }));
   }

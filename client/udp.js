@@ -11,6 +11,7 @@ module.exports = ({
   port = 53,
   socketType = 'udp4',
   timeout = 10000,
+  retryOverTCP = true,
 } = {}) => {
   return (name, type = 'A', cls = Packet.CLASS.IN, options = {}) => {
     const { clientIp, recursive = true } = options;
@@ -62,6 +63,16 @@ module.exports = ({
         if (response.header.id !== query.header.id) {
           debug('udp: dropping response with mismatched id %d (expected %d)',
             response.header.id, query.header.id);
+          return;
+        }
+        // RFC 1035 §4.2.1: if the TC (truncated) bit is set the upstream had
+        // more data than fits in a 512-byte UDP datagram.  Retry over TCP so
+        // callers always receive a complete answer.
+        if (response.header.tc && retryOverTCP) {
+          debug('udp: TC bit set — retrying query over TCP');
+          cleanup();
+          const TCPClient = require('./tcp');
+          resolve(TCPClient({ dns, port })(name, type, cls, options));
           return;
         }
         cleanup();

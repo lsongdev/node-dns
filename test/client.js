@@ -331,3 +331,80 @@ test('dns#constructor dns alias does not override explicit nameServers', () => {
   assert.deepEqual(dns.nameServers, [ '9.9.9.9' ],
     'explicit nameServers takes precedence over dns alias');
 });
+
+// ── Issue #45 — TC-bit fallback ───────────────────────────────────────────────
+
+test('client/udp falls back to TCP when TC bit is set', async() => {
+  // DNS allows UDP and TCP to share a port.  createServer binds both transports
+  // to the same port, letting the UDPClient's TC fallback reach the TCP server.
+  const net = require('node:net');
+
+  // Find a port that is free on both TCP and UDP.
+  const port = await new Promise(resolve => {
+    const probe = net.createServer();
+    probe.listen(0, '127.0.0.1', () => {
+      const { port } = probe.address();
+      probe.close(() => resolve(port));
+    });
+  });
+
+  const server = DNS.createServer({ udp: true, tcp: true });
+
+  server.on('request', (request, send, client) => {
+    const response = Packet.createResponseFromRequest(request);
+    // dgram.RemoteInfo (UDP) has a `family` string; net.Socket (TCP) does not.
+    const isUDP = typeof client.family === 'string';
+    if (isUDP) {
+      // Simulate a resolver that has more data than fits in 512 bytes.
+      response.header.tc = 1;
+    }
+    for (let i = 1; i <= 5; i++) {
+      response.answers.push({
+        name    : request.questions[0].name,
+        type    : Packet.TYPE.A,
+        class   : Packet.CLASS.IN,
+        ttl     : 300,
+        address : `10.0.0.${i}`,
+      });
+    }
+    send(response);
+  });
+
+  await server.listen({
+    udp : { port, address: '127.0.0.1' },
+    tcp : { port, address: '127.0.0.1' },
+  });
+
+  const query = UDPClient({ dns: '127.0.0.1', port, timeout: 3000 });
+  const reply = await query('tc.fallback');
+  assert.equal(reply.header.tc, 0, 'TCP response does not have TC set');
+  assert.equal(reply.answers.length, 5, 'all 5 answers received after TCP fallback');
+
+  await server.close();
+});
+
+test('client/udp respects retryOverTCP:false and returns truncated packet', async() => {
+  const udpServer = udp.createSocket('udp4');
+  await new Promise(resolve => udpServer.bind(0, '127.0.0.1', resolve));
+  const { port: serverPort } = udpServer.address();
+
+  udpServer.on('message', (msg, rinfo) => {
+    const request = Packet.parse(msg);
+    const response = Packet.createResponseFromRequest(request);
+    response.header.tc = 1;
+    response.answers.push({
+      name    : request.questions[0].name,
+      type    : Packet.TYPE.A,
+      class   : Packet.CLASS.IN,
+      ttl     : 300,
+      address : '1.2.3.4',
+    });
+    udpServer.send(response.toBuffer(), rinfo.port, rinfo.address);
+  });
+
+  const query = UDPClient({ dns: '127.0.0.1', port: serverPort, timeout: 2000, retryOverTCP: false });
+  const reply = await query('truncated.test');
+  assert.equal(reply.header.tc, 1, 'TC bit is set (no fallback)');
+  assert.equal(reply.answers.length, 1, 'only the truncated single answer returned');
+  await new Promise(resolve => udpServer.close(resolve));
+});

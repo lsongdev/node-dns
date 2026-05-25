@@ -4,7 +4,18 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Unreleased
 
-- test: split tests into 3 files, add 45 new tests
+- feat(client): add retryOverTCP option #117
+- feat(client): support `dns` argument, fix docs #116
+- feat: add resolveSOA #115
+- doc(README): add benchmark support #114
+- feat: add typescript types file #113
+- feat(packet): add RCODEs and usage docs #112
+- feat(packet): add CAA decoding #111
+- fix: reads across non-aligned bytes #111
+- fix: avoid mutating in-place requests #111
+- fix: avoid UTF8 corruption #111
+- test: split tests into 3 files, add 45 new tests #108
+- fix: drop mismatched IDs, filter senders, handle errs #104
 - feat(client/doh): HTTP/2 transport #89
 - feat(client/tcp): DNS-over-TLS support #88
 - feat(packet): IPv6 subnet support in `EDNS.ECS.decode`

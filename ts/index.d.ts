@@ -300,6 +300,8 @@ declare namespace DNS {
     retries: number;
     timeout: number;
     recursive: boolean;
+    /** When using UDP and the TC (truncated) bit is set, automatically retry over TCP. Default: `true`. */
+    retryOverTCP: boolean;
     resolverProtocol: 'UDP' | 'TCP' | 'DOH' | 'Google';
     /** Shorthand alias for `nameServers`. A single IP string or an array. */
     dns?: string | string[];
@@ -318,6 +320,8 @@ declare namespace DNS {
     port?: number;
     socketType?: dgram.SocketType;
     timeout?: number;
+    /** When the TC (truncated) bit is set, automatically retry over TCP. Default: `true`. */
+    retryOverTCP?: boolean;
   }
 
   interface TcpClientOptions {
