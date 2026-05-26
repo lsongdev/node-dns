@@ -81,6 +81,28 @@ test('Package#toIPv6', function() {
   assert.equal(Packet.toIPv6([ 9734, 18176, 12552, 0, 0, 0, 44098, 10984 ]), '2606:4700:3108::ac42:2ae8');
 });
 
+test('Package#toIPv6 RFC 5952 — leading-zero addresses', function() {
+  assert.equal(Packet.toIPv6([ 0, 0, 0, 0, 0, 0, 0, 1 ]), '::1');
+  assert.equal(Packet.toIPv6([ 0, 0, 0, 0, 0, 0, 0, 0 ]), '::');
+  assert.equal(Packet.toIPv6([ 0, 0, 0, 0, 0, 0xffff, 0xc000, 0x0201 ]), '::ffff:c000:201');
+});
+
+test('Package#toIPv6 RFC 5952 — trailing-zero addresses', function() {
+  assert.equal(Packet.toIPv6([ 1, 0, 0, 0, 0, 0, 0, 0 ]), '1::');
+  assert.equal(Packet.toIPv6([ 0x2001, 0xdb8, 0, 0, 0, 0, 0, 0 ]), '2001:db8::');
+});
+
+test('Package#toIPv6 RFC 5952 — single zero group is not compressed', function() {
+  // §4.2.2: "::" MUST NOT be used to shorten just one 16-bit 0 field.
+  assert.equal(Packet.toIPv6([ 1, 0, 1, 1, 1, 1, 1, 1 ]), '1:0:1:1:1:1:1:1');
+});
+
+test('Package#toIPv6 RFC 5952 — first run wins on tie', function() {
+  // §4.2.3: when there is more than one run of equal maximum length,
+  // the first is shortened.
+  assert.equal(Packet.toIPv6([ 1, 0, 0, 1, 0, 0, 1, 1 ]), '1::1:0:0:1:1');
+});
+
 test('Package#fromIPv6', function() {
   assert.deepEqual(Packet.fromIPv6('2a04:4e42:200::323'), [
     '2a04', '4e42', '0200', '0', '0', '0', '0', '0323' ]);

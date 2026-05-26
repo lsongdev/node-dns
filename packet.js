@@ -5,10 +5,29 @@ const BufferWriter = require('./lib/writer');
 
 const debug = debuglog('dns2');
 
-const toIPv6 = buffer => buffer
-  .map(part => (part > 0 ? part.toString(16) : '0'))
-  .join(':')
-  .replace(/\b(?:0+:){1,}/, ':');
+// Canonical IPv6 text form per RFC 5952:
+//   - lower case hex, no leading zeros per group  (handled by toString(16))
+//   - the longest run of >= 2 zero groups is replaced with "::"
+//   - on ties, the first such run is chosen
+//   - a single zero group is NOT compressed
+const toIPv6 = buffer => {
+  const segments = buffer.map(part => (part > 0 ? part.toString(16) : '0'));
+  let bestStart = -1; let bestLen = 0;
+  let curStart = -1; let curLen = 0;
+  for (let i = 0; i < segments.length; i++) {
+    if (segments[i] === '0') {
+      if (curLen === 0) curStart = i;
+      curLen++;
+      if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; }
+    } else {
+      curLen = 0;
+    }
+  }
+  if (bestLen < 2) return segments.join(':');
+  const before = segments.slice(0, bestStart).join(':');
+  const after = segments.slice(bestStart + bestLen).join(':');
+  return `${before}::${after}`;
+};
 
 const fromIPv6 = (address) => {
   const digits = address.split(':');
