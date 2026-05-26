@@ -1,6 +1,17 @@
 import js from '@eslint/js';
 import globals from 'globals';
 
+const nodeRules = {
+  'no-unused-vars': [
+    'error',
+    {
+      args: 'none',
+      caughtErrors: 'none',
+      ignoreRestSiblings: true,
+    },
+  ],
+};
+
 export default [
   js.configs.recommended,
   {
@@ -8,19 +19,17 @@ export default [
     languageOptions: {
       ecmaVersion: 'latest',
       sourceType: 'commonjs',
-      globals: {
-        ...globals.node,
-      },
+      globals: { ...globals.node },
     },
-    rules: {
-      'no-unused-vars': [
-        'error',
-        {
-          args: 'none',
-          caughtErrors: 'none',
-          ignoreRestSiblings: true,
-        },
-      ],
+    rules: nodeRules,
+  },
+  {
+    files: ['**/*.mjs'],
+    languageOptions: {
+      ecmaVersion: 'latest',
+      sourceType: 'module',
+      globals: { ...globals.node },
     },
+    rules: nodeRules,
   },
 ];
