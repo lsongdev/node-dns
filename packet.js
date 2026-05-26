@@ -263,8 +263,8 @@ Packet.prototype.toBuffer = function(writer) {
   ]).forEach(function(def) {
     const section = def[0];
     const Encoder = def[1];
-    (this[section] || []).map(function(resource) {
-      return Encoder.encode(resource, writer);
+    (this[section] || []).forEach(function(resource) {
+      Encoder.encode(resource, writer);
     });
   }.bind(this));
   return writer.toBuffer();
@@ -400,11 +400,12 @@ Packet.Question.decode = function(reader) {
 };
 
 Packet.Question.encode = function(question, writer) {
+  const ownsWriter = !writer;
   writer = writer || new Packet.Writer();
   Packet.Name.encode(question.name, writer);
   writer.write(question.type, 16);
   writer.write(question.class, 16);
-  return writer.toBuffer();
+  return ownsWriter ? writer.toBuffer() : undefined;
 };
 
 /**
@@ -572,6 +573,10 @@ Packet.Name = {
     return name.join('.');
   },
   encode: function(domain, writer) {
+    // Only materialize a Buffer when we created the writer; if the caller
+    // passed one, they own the final toBuffer() and we avoid an O(buffer)
+    // materialization per name (a big deal once many records share a suffix).
+    const ownsWriter = !writer;
     writer = writer || new Packet.Writer();
     const parts = (domain || '').split('.').filter(part => !!part);
     let totalOctets = 1; // root terminator
@@ -598,7 +603,7 @@ Packet.Name = {
       const suffix = parts.slice(i).join('.').toLowerCase();
       if (compress && writer.names.has(suffix)) {
         writer.write(0xC000 | writer.names.get(suffix), 16);
-        return writer.toBuffer();
+        return ownsWriter ? writer.toBuffer() : undefined;
       }
       if (compress) {
         const byteOffset = writer.byteLength();
@@ -610,7 +615,7 @@ Packet.Name = {
       }
     }
     writer.write(0, 8);
-    return writer.toBuffer();
+    return ownsWriter ? writer.toBuffer() : undefined;
   },
 };
 
@@ -629,10 +634,11 @@ Packet.Resource.A = function(address) {
 Packet.Resource.A.encode = function(record, writer) {
   writer = writer || new Packet.Writer();
   // RDLENGTH is written by Packet.Resource.encode; only emit the rdata here.
+  // No toBuffer() — the caller owns materialization (avoids O(N) re-walks of
+  // the message bit-array per record).
   record.address.split('.').forEach(function(part) {
     writer.write(parseInt(part, 10), 8);
   });
-  return writer.toBuffer();
 };
 
 Packet.Resource.A.decode = function(reader, length) {
@@ -665,7 +671,6 @@ Packet.Resource.MX.encode = function(record, writer) {
   writer = writer || new Packet.Writer();
   writer.write(record.priority, 16);
   Packet.Name.encode(record.exchange, writer);
-  return writer.toBuffer();
 };
 /**
  * [decode description]
@@ -698,7 +703,6 @@ Packet.Resource.AAAA = {
     fromIPv6(record.address).forEach(function(part) {
       writer.write(parseInt(part, 16), 16);
     });
-    return writer.toBuffer();
   },
 };
 /**
@@ -714,7 +718,6 @@ Packet.Resource.NS = {
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
     Packet.Name.encode(record.ns, writer);
-    return writer.toBuffer();
   },
 };
 /**
@@ -731,7 +734,6 @@ Packet.Resource.CNAME = {
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
     Packet.Name.encode(record.domain, writer);
-    return writer.toBuffer();
   },
 };
 /**
@@ -784,8 +786,6 @@ Packet.Resource.TXT = {
         writer.write(c, 8);
       });
     });
-
-    return writer.toBuffer();
   },
 };
 /**
@@ -814,7 +814,6 @@ Packet.Resource.SOA = {
     writer.write(record.expiration, 32);
     // RFC 2308 §4: the SOA minimum field is also a TTL; same 31-bit ceiling.
     writer.write(Math.min(record.minimum >>> 0, 0x7FFFFFFF), 32);
-    return writer.toBuffer();
   },
 };
 /**
@@ -836,7 +835,6 @@ Packet.Resource.SRV = {
     writer.write(record.weight, 16);
     writer.write(record.port, 16);
     Packet.Name.encode(record.target, writer);
-    return writer.toBuffer();
   },
 };
 
@@ -921,7 +919,6 @@ Packet.Resource.EDNS.encode = function(record, writer) {
       debug('node-dns > unknown EDNS rdata encoder %s(%j)', encoder, rdata.ednsCode);
     }
   }
-  return writer.toBuffer();
 };
 
 Packet.Resource.EDNS.ECS = function(clientIp) {
@@ -1024,7 +1021,6 @@ Packet.Resource.CAA = {
     buffer.forEach(function(c) {
       writer.write(c, 8);
     });
-    return writer.toBuffer();
   },
   decode: function(reader, length) {
     this.flags = reader.read(8);
@@ -1083,7 +1079,6 @@ Packet.Resource.DNSKEY = {
     buffer.forEach(function(c) {
       writer.write(c, 8);
     });
-    return writer.toBuffer();
   },
 };
 

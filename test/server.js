@@ -586,12 +586,14 @@ test('server/doh#GET with Accept: */* is accepted (RFC 8484 §4.1)', async() => 
 
 test('server/doh#POST 415 on missing or wrong Content-Type (RFC 8484 §4.1)', async() => {
   const server = createDOHServer();
+  const requestErrors = [];
   server.on('request', (request, send) => send(Packet.createResponseFromRequest(request)));
+  server.on('requestError', e => requestErrors.push(e));
   const { port } = await new Promise(resolve => {
     server.on('listening', resolve);
     server.listen();
   });
-  const sendPost = contentType => new Promise((resolve, reject) => {
+  const sendPost = (contentType, body = Buffer.alloc(12)) => new Promise((resolve, reject) => {
     const headers = { accept: 'application/dns-message' };
     if (contentType) headers['content-type'] = contentType;
     const req = http.request({
@@ -600,14 +602,18 @@ test('server/doh#POST 415 on missing or wrong Content-Type (RFC 8484 §4.1)', as
       path   : '/dns-query',
       method : 'POST',
       headers,
-    }, res => resolve(res.statusCode));
-    req.on('error', reject);
-    req.end(Buffer.alloc(12));
+    }, res => resolve({ status: res.statusCode }));
+    req.on('error', err => resolve({ error: err }));
+    req.end(body);
   });
-  assert.equal(await sendPost(undefined), 415, 'missing Content-Type');
-  assert.equal(await sendPost('application/json'), 415, 'wrong Content-Type');
-  // Sanity: with the correct Content-Type a malformed body still surfaces as
-  // a server-side parse error (the connection is destroyed), not 415.
+  assert.equal((await sendPost(undefined)).status, 415, 'missing Content-Type');
+  assert.equal((await sendPost('application/json')).status, 415, 'wrong Content-Type');
+  // With the correct Content-Type the 415 check passes, so a body too short
+  // for a DNS header surfaces as a server-side parse error (handler destroys
+  // the connection); the client sees a socket-level error, not a 415.
+  const malformed = await sendPost('application/dns-message', Buffer.alloc(0));
+  assert.ok(malformed.error, 'malformed body should fail at the socket, not return 415');
+  assert.ok(requestErrors.length >= 1, 'requestError should have fired for the malformed body');
   server.close();
 });
 
