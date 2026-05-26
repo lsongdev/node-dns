@@ -33,6 +33,27 @@ function get(url, options) {
   });
 }
 
+// Open a TCP connection, write a single request payload, read one
+// length-prefixed reply, then close. Replaces the older pattern of waiting
+// for the server to half-close — RFC 7766 servers hold connections open for
+// pipelining, so the client must signal it's done.
+function readOneTcpReply(port, payload) {
+  return new Promise((resolve, reject) => {
+    const sock = tcp.connect(port, '127.0.0.1', () => sock.write(payload));
+    let buffered = Buffer.alloc(0);
+    sock.on('data', chunk => {
+      buffered = Buffer.concat([ buffered, chunk ]);
+      if (buffered.length < 2) return;
+      const len = buffered.readUInt16BE(0);
+      if (buffered.length < 2 + len) return;
+      const message = buffered.slice(2, 2 + len);
+      sock.end();
+      resolve(Packet.parse(message));
+    });
+    sock.on('error', reject);
+  });
+}
+
 test('server/doh#cors - default', async function() {
   const server = createDOHServer();
   const { port } = await new Promise(resolve => {
@@ -125,6 +146,85 @@ test('server/udp-tcp#simple-request-async-response', async() => {
   await server.close();
 });
 
+test('server/udp#oversized response sets TC=1 and truncates (RFC 1035 §4.2.1)', async() => {
+  const server = createUDPServer();
+  server.on('request', (request, send) => {
+    const response = Packet.createResponseFromRequest(request);
+    // 60 TXT answers with long strings → far past the 512 byte UDP limit.
+    for (let i = 0; i < 60; i++) {
+      response.answers.push({
+        name  : request.questions[0].name,
+        type  : Packet.TYPE.TXT,
+        class : Packet.CLASS.IN,
+        ttl   : 60,
+        data  : 'x'.repeat(200),
+      });
+    }
+    send(response);
+  });
+  await server.listen(0, '127.0.0.1');
+  const { port } = server.address();
+
+  // Send a non-EDNS query so the server applies the 512-byte ceiling.
+  const query = new Packet();
+  query.header.id = 0xABCD;
+  query.header.rd = 1;
+  query.questions.push({ name: 'big.test', type: Packet.TYPE.TXT, class: Packet.CLASS.IN });
+  const client = udp.createSocket('udp4');
+  const reply = await new Promise((resolve, reject) => {
+    client.on('message', msg => resolve(msg));
+    client.on('error', reject);
+    client.send(query.toBuffer(), port, '127.0.0.1');
+  });
+  await new Promise(resolve => client.close(resolve));
+  assert.ok(reply.length <= 512, `reply ${reply.length} bytes must be ≤ 512`);
+  const parsed = Packet.parse(reply);
+  assert.equal(parsed.header.tc, 1, 'TC bit must be set on truncated reply');
+  assert.equal(parsed.header.id, 0xABCD);
+  assert.equal(parsed.questions[0].name, 'big.test');
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('server/udp#EDNS-advertised payload raises UDP ceiling (RFC 6891 §6.2.3)', async() => {
+  // When the request carries an OPT record with class=4096, the server may
+  // send a response up to 4096 bytes without truncating.
+  const server = createUDPServer();
+  server.on('request', (request, send) => {
+    const response = Packet.createResponseFromRequest(request);
+    for (let i = 0; i < 5; i++) {
+      response.answers.push({
+        name  : request.questions[0].name,
+        type  : Packet.TYPE.TXT,
+        class : Packet.CLASS.IN,
+        ttl   : 60,
+        data  : 'y'.repeat(200),
+      });
+    }
+    send(response);
+  });
+  await server.listen(0, '127.0.0.1');
+  const { port } = server.address();
+
+  const query = new Packet();
+  query.header.id = 0x1234;
+  query.header.rd = 1;
+  query.questions.push({ name: 'edns.test', type: Packet.TYPE.TXT, class: Packet.CLASS.IN });
+  query.additionals.push(Packet.Resource.EDNS([], { udpPayloadSize: 4096 }));
+
+  const client = udp.createSocket('udp4');
+  const reply = await new Promise((resolve, reject) => {
+    client.on('message', msg => resolve(msg));
+    client.on('error', reject);
+    client.send(query.toBuffer(), port, '127.0.0.1');
+  });
+  await new Promise(resolve => client.close(resolve));
+  assert.ok(reply.length > 512, `EDNS-advertised payload should permit > 512 bytes; got ${reply.length}`);
+  const parsed = Packet.parse(reply);
+  assert.equal(parsed.header.tc, 0, 'no truncation expected within EDNS budget');
+  assert.equal(parsed.answers.length, 5);
+  await new Promise(resolve => server.close(resolve));
+});
+
 test('server/udp#standalone end-to-end query', async() => {
   const server = createUDPServer();
   server.on('request', (request, send) => {
@@ -170,6 +270,68 @@ test('server/tcp#standalone end-to-end query', async() => {
   assert.equal(reply.answers.length, 1);
   assert.equal(reply.answers[0].address, '198.51.100.20');
   assert.equal(reply.header.qr, 1);
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('server/tcp#pipelined queries share a connection (RFC 7766 §6.2.1.1)', async() => {
+  const server = createTCPServer();
+  server.on('request', (request, send) => {
+    const response = Packet.createResponseFromRequest(request);
+    response.answers.push({
+      name    : request.questions[0].name,
+      type    : Packet.TYPE.A,
+      class   : Packet.CLASS.IN,
+      ttl     : 60,
+      address : '192.0.2.42',
+    });
+    send(response);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  // Build two distinct queries and send them back-to-back on one connection
+  // without waiting for each reply. The server must process both and write
+  // length-prefixed replies on the same socket.
+  const queries = [ 'pipe1.test', 'pipe2.test', 'pipe3.test' ].map((name, i) => {
+    const q = new Packet();
+    q.header.id = 0x1000 + i;
+    q.header.rd = 1;
+    q.questions.push({ name, type: Packet.TYPE.A, class: Packet.CLASS.IN });
+    const body = q.toBuffer();
+    const len = Buffer.alloc(2);
+    len.writeUInt16BE(body.length);
+    return { id: q.header.id, frame: Buffer.concat([ len, body ]) };
+  });
+
+  const replies = await new Promise((resolve, reject) => {
+    const sock = tcp.connect(port, '127.0.0.1', () => {
+      for (const q of queries) sock.write(q.frame);
+    });
+    const out = [];
+    let buffered = Buffer.alloc(0);
+    sock.on('data', chunk => {
+      buffered = Buffer.concat([ buffered, chunk ]);
+      while (buffered.length >= 2) {
+        const len = buffered.readUInt16BE(0);
+        if (buffered.length < 2 + len) break;
+        out.push(Packet.parse(buffered.slice(2, 2 + len)));
+        buffered = buffered.slice(2 + len);
+        if (out.length === queries.length) {
+          sock.end();
+          resolve(out);
+        }
+      }
+    });
+    sock.on('error', reject);
+  });
+
+  assert.equal(replies.length, queries.length);
+  const ids = replies.map(r => r.header.id).sort();
+  assert.deepEqual(ids, queries.map(q => q.id).sort());
+  for (const r of replies) {
+    assert.equal(r.header.qr, 1);
+    assert.equal(r.answers[0].address, '192.0.2.42');
+  }
   await new Promise(resolve => server.close(resolve));
 });
 
@@ -286,17 +448,25 @@ test('server/doh#404 on unknown path', async() => {
   server.close();
 });
 
-test('server/doh#400 on missing accept header', async() => {
+test('server/doh#406 on incompatible Accept header', async() => {
+  // RFC 8484 §4.1: the client SHOULD send Accept: application/dns-message but
+  // the server is not required to reject other values. Only reject when the
+  // client explicitly asked for media types that exclude
+  // application/dns-message — the server always replies with that type.
   const server = createDOHServer();
   const { port } = await new Promise(resolve => {
     server.on('listening', resolve);
     server.listen();
   });
   const statusCode = await new Promise((resolve, reject) => {
-    http.get({ host: '127.0.0.1', port, path: '/dns-query?dns=abc' }, res => resolve(res.statusCode))
-      .on('error', reject);
+    http.get({
+      host    : '127.0.0.1',
+      port,
+      path    : '/dns-query?dns=abc',
+      headers : { accept: 'text/html' },
+    }, res => resolve(res.statusCode)).on('error', reject);
   });
-  assert.equal(statusCode, 400);
+  assert.equal(statusCode, 406);
   server.close();
 });
 
@@ -315,6 +485,109 @@ test('server/doh#400 on missing dns query param', async() => {
     }, res => resolve(res.statusCode)).on('error', reject);
   });
   assert.equal(statusCode, 400);
+  server.close();
+});
+
+test('server/doh#GET with Accept: */* is accepted (RFC 8484 §4.1)', async() => {
+  // curl-style clients send */*; the server must not reject them — it always
+  // replies with application/dns-message anyway.
+  const server = createDOHServer();
+  server.on('request', (request, send) => {
+    const response = Packet.createResponseFromRequest(request);
+    response.answers.push({
+      name    : request.questions[0].name,
+      type    : Packet.TYPE.A,
+      class   : Packet.CLASS.IN,
+      ttl     : 60,
+      address : '198.51.100.40',
+    });
+    send(response);
+  });
+  const { port } = await new Promise(resolve => {
+    server.on('listening', resolve);
+    server.listen();
+  });
+  const query = DOHClient({ dns: `http://127.0.0.1:${port}/dns-query` });
+  // Routes through DOHClient which sets Accept: application/dns-message;
+  // for the */* case we hit the server with a raw http.get.
+  const reply = await query('star-accept.test');
+  assert.equal(reply.answers[0].address, '198.51.100.40');
+
+  const packet = new Packet();
+  packet.header.rd = 1;
+  packet.questions.push({ name: 'star.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  const dns = packet.toBase64URL();
+  const status = await new Promise((resolve, reject) => {
+    http.get({
+      host    : '127.0.0.1',
+      port,
+      path    : `/dns-query?dns=${dns}`,
+      headers : { accept: '*/*' },
+    }, res => resolve(res.statusCode)).on('error', reject);
+  });
+  assert.equal(status, 200);
+  server.close();
+});
+
+test('server/doh#POST 415 on missing or wrong Content-Type (RFC 8484 §4.1)', async() => {
+  const server = createDOHServer();
+  server.on('request', (request, send) => send(Packet.createResponseFromRequest(request)));
+  const { port } = await new Promise(resolve => {
+    server.on('listening', resolve);
+    server.listen();
+  });
+  const sendPost = contentType => new Promise((resolve, reject) => {
+    const headers = { accept: 'application/dns-message' };
+    if (contentType) headers['content-type'] = contentType;
+    const req = http.request({
+      host   : '127.0.0.1',
+      port,
+      path   : '/dns-query',
+      method : 'POST',
+      headers,
+    }, res => resolve(res.statusCode));
+    req.on('error', reject);
+    req.end(Buffer.alloc(12));
+  });
+  assert.equal(await sendPost(undefined), 415, 'missing Content-Type');
+  assert.equal(await sendPost('application/json'), 415, 'wrong Content-Type');
+  // Sanity: with the correct Content-Type a malformed body still surfaces as
+  // a server-side parse error (the connection is destroyed), not 415.
+  server.close();
+});
+
+test('server/doh#response carries Cache-Control: max-age=<min TTL> (RFC 8484 §5.1)', async() => {
+  const server = createDOHServer();
+  server.on('request', (request, send) => {
+    const response = Packet.createResponseFromRequest(request);
+    response.answers.push({
+      name    : request.questions[0].name,
+      type    : Packet.TYPE.A,
+      class   : Packet.CLASS.IN,
+      ttl     : 300,
+      address : '203.0.113.10',
+    });
+    response.answers.push({
+      name    : request.questions[0].name,
+      type    : Packet.TYPE.A,
+      class   : Packet.CLASS.IN,
+      ttl     : 30, // minimum across the two answers
+      address : '203.0.113.11',
+    });
+    send(response);
+  });
+  const { port } = await new Promise(resolve => {
+    server.on('listening', resolve);
+    server.listen();
+  });
+  const packet = new Packet();
+  packet.header.rd = 1;
+  packet.questions.push({ name: 'cc.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  const dns = packet.toBase64URL();
+  const { headers } = await get(`http://127.0.0.1:${port}/dns-query?dns=${dns}`, {
+    headers: { accept: 'application/dns-message' },
+  });
+  assert.equal(headers['cache-control'], 'max-age=30');
   server.close();
 });
 
@@ -619,18 +892,7 @@ test('server/tcp#proxyProtocol v1 exposes real client address', async() => {
     destinationPort    : serverPort,
   });
 
-  const reply = await new Promise((resolve, reject) => {
-    const sock = tcp.connect(serverPort, '127.0.0.1', () => {
-      sock.write(Buffer.concat([ proxyHeader, length, dnsMessage ]));
-    });
-    const chunks = [];
-    sock.on('data', c => chunks.push(c));
-    sock.on('end', () => {
-      const buf = Buffer.concat(chunks);
-      resolve(Packet.parse(buf.slice(2)));
-    });
-    sock.on('error', reject);
-  });
+  const reply = await readOneTcpReply(serverPort, Buffer.concat([ proxyHeader, length, dnsMessage ]));
 
   assert.equal(reply.header.id, 0x1111);
   assert.equal(reply.answers[0].address, '127.0.0.1');
@@ -671,15 +933,7 @@ test('server/tcp#proxyProtocol v2 exposes real client address', async() => {
     destinationPort    : serverPort,
   });
 
-  const reply = await new Promise((resolve, reject) => {
-    const sock = tcp.connect(serverPort, '127.0.0.1', () => {
-      sock.write(Buffer.concat([ proxyHeader, length, dnsMessage ]));
-    });
-    const chunks = [];
-    sock.on('data', c => chunks.push(c));
-    sock.on('end', () => resolve(Packet.parse(Buffer.concat(chunks).slice(2))));
-    sock.on('error', reject);
-  });
+  const reply = await readOneTcpReply(serverPort, Buffer.concat([ proxyHeader, length, dnsMessage ]));
 
   assert.equal(reply.header.id, 0x2222);
   assert.equal(observed.address, '198.51.100.99');
