@@ -9,26 +9,33 @@ class DNSServer extends EventEmitter {
     super();
     this.servers = {};
     if (options.doh) {
-      this.servers.doh = (new DOHServer(options.doh))
-        .on('error', error => this.emit('error', error, 'doh'));
+      this.servers.doh = new DOHServer(options.doh).on('error', error =>
+        this.emit('error', error, 'doh'),
+      );
     }
     if (options.tcp) {
-      this.servers.tcp = (new TCPServer())
-        .on('error', error => this.emit('error', error, 'tcp'));
+      this.servers.tcp = new TCPServer().on('error', error =>
+        this.emit('error', error, 'tcp'),
+      );
     }
     if (options.udp) {
-      this.servers.udp = (new UDPServer(typeof options.udp === 'object' ? options.udp : undefined))
-        .on('error', error => this.emit('error', error, 'udp'));
+      this.servers.udp = new UDPServer(
+        typeof options.udp === 'object' ? options.udp : undefined,
+      ).on('error', error => this.emit('error', error, 'udp'));
     }
     const servers = Object.values(this.servers);
     this.closed = Promise.all(
-      servers.map(server => new Promise(resolve => server.once('close', resolve))),
+      servers.map(
+        server => new Promise(resolve => server.once('close', resolve)),
+      ),
     ).then(() => {
       this.emit('close');
     });
 
     this.listening = Promise.all(
-      servers.map(server => new Promise(resolve => server.once('listening', resolve))),
+      servers.map(
+        server => new Promise(resolve => server.once('listening', resolve)),
+      ),
     ).then(() => {
       const addresses = this.addresses();
       this.emit('listening', addresses);
@@ -52,7 +59,7 @@ class DNSServer extends EventEmitter {
       };
       this.emit('request', request, wrappedSend, client);
     };
-    const emitRequestError = (error) => this.emit('requestError', error);
+    const emitRequestError = error => this.emit('requestError', error);
     for (const server of servers) {
       server.on('request', emitRequest);
       server.on('requestError', emitRequestError);

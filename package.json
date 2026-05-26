@@ -13,11 +13,13 @@
     "ts"
   ],
   "scripts": {
+    "lint": "npx eslint .",
+    "lint:fix": "npx eslint . --fix",
+    "prettier": "npx prettier . --check",
+    "prettier:fix": "npx prettier . --write --log-level=warn",
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage",
     "test:coverage:lcov": "mkdir -p coverage && node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=coverage/lcov.info",
-    "lint": "npx eslint .",
-    "lint:fix": "npx eslint . --fix",
     "example-server-udp": "node example/server/udp.js",
     "example-server-tcp": "node example/server/tcp.js",
     "example-server-doh": "node example/server/doh.js",
@@ -55,7 +57,8 @@
   },
   "prettier": {
     "printWidth": 80,
-    "semi": false,
-    "singleQuote": true
+    "semi": true,
+    "singleQuote": true,
+    "arrowParens": "avoid"
   }
 }

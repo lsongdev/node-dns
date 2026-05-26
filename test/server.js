@@ -21,10 +21,12 @@ function get(url, options) {
         const result = [];
         res.on('data', data => result.push(data));
         res.once('error', reject);
-        res.once('end', () => resolve({
-          body    : Buffer.concat(result),
-          headers : res.headers,
-        }));
+        res.once('end', () =>
+          resolve({
+            body: Buffer.concat(result),
+            headers: res.headers,
+          }),
+        );
       });
       req.on('error', reject);
     } catch (err) {
@@ -42,7 +44,7 @@ function readOneTcpReply(port, payload) {
     const sock = tcp.connect(port, '127.0.0.1', () => sock.write(payload));
     let buffered = Buffer.alloc(0);
     sock.on('data', chunk => {
-      buffered = Buffer.concat([ buffered, chunk ]);
+      buffered = Buffer.concat([buffered, chunk]);
       if (buffered.length < 2) return;
       const len = buffered.readUInt16BE(0);
       if (buffered.length < 2 + len) return;
@@ -54,7 +56,7 @@ function readOneTcpReply(port, payload) {
   });
 }
 
-test('server/doh#cors - default', async function() {
+test('server/doh#cors - default', async function () {
   const server = createDOHServer();
   const { port } = await new Promise(resolve => {
     server.on('listening', resolve);
@@ -65,7 +67,7 @@ test('server/doh#cors - default', async function() {
   server.close();
 });
 
-test('server/doh#cors - no cors', async function() {
+test('server/doh#cors - no cors', async function () {
   const server = createDOHServer({
     cors: false,
   });
@@ -78,7 +80,7 @@ test('server/doh#cors - no cors', async function() {
   server.close();
 });
 
-test('server/doh#cors - cors origin', async function() {
+test('server/doh#cors - cors origin', async function () {
   const server = createDOHServer({
     cors: 'some.domain',
   });
@@ -92,7 +94,7 @@ test('server/doh#cors - cors origin', async function() {
   server.close();
 });
 
-test('server/doh#cors - cors function', async function() {
+test('server/doh#cors - cors function', async function () {
   const server = createDOHServer({
     cors(domain) {
       if (domain === 'a.domain') {
@@ -107,32 +109,40 @@ test('server/doh#cors - cors function', async function() {
     server.on('listening', resolve);
     server.listen();
   });
-  let headers = (await get(`http://localhost:${port}`, { headers: { origin: 'a.domain' } })).headers;
+  let headers = (
+    await get(`http://localhost:${port}`, { headers: { origin: 'a.domain' } })
+  ).headers;
   assert.equal(headers['access-control-allow-origin'], 'a.domain');
   assert.equal(headers.vary, 'Origin');
-  headers = (await get(`http://localhost:${port}`, { headers: { origin: 'b.domain' } })).headers;
+  headers = (
+    await get(`http://localhost:${port}`, { headers: { origin: 'b.domain' } })
+  ).headers;
   assert.equal(headers['access-control-allow-origin'], 'false');
   assert.equal(headers.vary, 'Origin');
   server.close();
 });
 
-test('server/udp-tcp#simple-request-async-response', async() => {
+test('server/udp-tcp#simple-request-async-response', async () => {
   const server = createServer({
-    tcp : true,
-    udp : true,
+    tcp: true,
+    udp: true,
     handle(request, send, _info) {
-      const [ question ] = request.questions;
-      assert.deepEqual(request.questions, [ { name: 'test.com', type: 1, class: 1 } ]);
+      const [question] = request.questions;
+      assert.deepEqual(request.questions, [
+        { name: 'test.com', type: 1, class: 1 },
+      ]);
       const response = Packet.createResponseFromRequest(request);
       response.answers.push({
-        name  : question.name,
-        type  : Packet.TYPE.TXT,
-        class : Packet.CLASS.IN,
-        ttl   : 300,
-        data  : [ 'Hello World' ],
+        name: question.name,
+        type: Packet.TYPE.TXT,
+        class: Packet.CLASS.IN,
+        ttl: 300,
+        data: ['Hello World'],
       });
 
-      (new Promise((resolve) => setTimeout(() => resolve(), 1))).then(() => send(response));
+      new Promise(resolve => setTimeout(() => resolve(), 1)).then(() =>
+        send(response),
+      );
     },
   });
   const servers = await server.listen();
@@ -140,24 +150,26 @@ test('server/udp-tcp#simple-request-async-response', async() => {
   assert.ok(servers.tcp.port > 1000);
   const tcpClient = TCPClient({ dns: '127.0.0.1', port: servers.tcp.port });
   const udpClient = UDPClient({ dns: '127.0.0.1', port: servers.udp.port });
-  const expected = [ { name: 'test.com', ttl: 300, type: 16, class: 1, data: 'Hello World' } ];
+  const expected = [
+    { name: 'test.com', ttl: 300, type: 16, class: 1, data: 'Hello World' },
+  ];
   assert.deepEqual((await tcpClient('test.com')).answers, expected);
   assert.deepEqual((await udpClient('test.com')).answers, expected);
   await server.close();
 });
 
-test('server/udp#oversized response sets TC=1 and truncates (RFC 1035 §4.2.1)', async() => {
+test('server/udp#oversized response sets TC=1 and truncates (RFC 1035 §4.2.1)', async () => {
   const server = createUDPServer();
   server.on('request', (request, send) => {
     const response = Packet.createResponseFromRequest(request);
     // 60 TXT answers with long strings → far past the 512 byte UDP limit.
     for (let i = 0; i < 60; i++) {
       response.answers.push({
-        name  : request.questions[0].name,
-        type  : Packet.TYPE.TXT,
-        class : Packet.CLASS.IN,
-        ttl   : 60,
-        data  : 'x'.repeat(200),
+        name: request.questions[0].name,
+        type: Packet.TYPE.TXT,
+        class: Packet.CLASS.IN,
+        ttl: 60,
+        data: 'x'.repeat(200),
       });
     }
     send(response);
@@ -167,9 +179,13 @@ test('server/udp#oversized response sets TC=1 and truncates (RFC 1035 §4.2.1)',
 
   // Send a non-EDNS query so the server applies the 512-byte ceiling.
   const query = new Packet();
-  query.header.id = 0xABCD;
+  query.header.id = 0xabcd;
   query.header.rd = 1;
-  query.questions.push({ name: 'big.test', type: Packet.TYPE.TXT, class: Packet.CLASS.IN });
+  query.questions.push({
+    name: 'big.test',
+    type: Packet.TYPE.TXT,
+    class: Packet.CLASS.IN,
+  });
   const client = udp.createSocket('udp4');
   const reply = await new Promise((resolve, reject) => {
     client.on('message', msg => resolve(msg));
@@ -180,12 +196,12 @@ test('server/udp#oversized response sets TC=1 and truncates (RFC 1035 §4.2.1)',
   assert.ok(reply.length <= 512, `reply ${reply.length} bytes must be ≤ 512`);
   const parsed = Packet.parse(reply);
   assert.equal(parsed.header.tc, 1, 'TC bit must be set on truncated reply');
-  assert.equal(parsed.header.id, 0xABCD);
+  assert.equal(parsed.header.id, 0xabcd);
   assert.equal(parsed.questions[0].name, 'big.test');
   await new Promise(resolve => server.close(resolve));
 });
 
-test('server/udp#EDNS-advertised payload raises UDP ceiling (RFC 6891 §6.2.3)', async() => {
+test('server/udp#EDNS-advertised payload raises UDP ceiling (RFC 6891 §6.2.3)', async () => {
   // When the request carries an OPT record with class=4096, the server may
   // send a response up to 4096 bytes without truncating.
   const server = createUDPServer();
@@ -193,11 +209,11 @@ test('server/udp#EDNS-advertised payload raises UDP ceiling (RFC 6891 §6.2.3)',
     const response = Packet.createResponseFromRequest(request);
     for (let i = 0; i < 5; i++) {
       response.answers.push({
-        name  : request.questions[0].name,
-        type  : Packet.TYPE.TXT,
-        class : Packet.CLASS.IN,
-        ttl   : 60,
-        data  : 'y'.repeat(200),
+        name: request.questions[0].name,
+        type: Packet.TYPE.TXT,
+        class: Packet.CLASS.IN,
+        ttl: 60,
+        data: 'y'.repeat(200),
       });
     }
     send(response);
@@ -208,7 +224,11 @@ test('server/udp#EDNS-advertised payload raises UDP ceiling (RFC 6891 §6.2.3)',
   const query = new Packet();
   query.header.id = 0x1234;
   query.header.rd = 1;
-  query.questions.push({ name: 'edns.test', type: Packet.TYPE.TXT, class: Packet.CLASS.IN });
+  query.questions.push({
+    name: 'edns.test',
+    type: Packet.TYPE.TXT,
+    class: Packet.CLASS.IN,
+  });
   query.additionals.push(Packet.Resource.EDNS([], { udpPayloadSize: 4096 }));
 
   const client = udp.createSocket('udp4');
@@ -218,23 +238,30 @@ test('server/udp#EDNS-advertised payload raises UDP ceiling (RFC 6891 §6.2.3)',
     client.send(query.toBuffer(), port, '127.0.0.1');
   });
   await new Promise(resolve => client.close(resolve));
-  assert.ok(reply.length > 512, `EDNS-advertised payload should permit > 512 bytes; got ${reply.length}`);
+  assert.ok(
+    reply.length > 512,
+    `EDNS-advertised payload should permit > 512 bytes; got ${reply.length}`,
+  );
   const parsed = Packet.parse(reply);
-  assert.equal(parsed.header.tc, 0, 'no truncation expected within EDNS budget');
+  assert.equal(
+    parsed.header.tc,
+    0,
+    'no truncation expected within EDNS budget',
+  );
   assert.equal(parsed.answers.length, 5);
   await new Promise(resolve => server.close(resolve));
 });
 
-test('server/udp#standalone end-to-end query', async() => {
+test('server/udp#standalone end-to-end query', async () => {
   const server = createUDPServer();
   server.on('request', (request, send) => {
     const response = Packet.createResponseFromRequest(request);
     response.answers.push({
-      name    : request.questions[0].name,
-      type    : Packet.TYPE.A,
-      class   : Packet.CLASS.IN,
-      ttl     : 60,
-      address : '198.51.100.10',
+      name: request.questions[0].name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 60,
+      address: '198.51.100.10',
     });
     send(response);
   });
@@ -249,16 +276,16 @@ test('server/udp#standalone end-to-end query', async() => {
   await new Promise(resolve => server.close(resolve));
 });
 
-test('server/tcp#standalone end-to-end query', async() => {
+test('server/tcp#standalone end-to-end query', async () => {
   const server = createTCPServer();
   server.on('request', (request, send) => {
     const response = Packet.createResponseFromRequest(request);
     response.answers.push({
-      name    : request.questions[0].name,
-      type    : Packet.TYPE.A,
-      class   : Packet.CLASS.IN,
-      ttl     : 60,
-      address : '198.51.100.20',
+      name: request.questions[0].name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 60,
+      address: '198.51.100.20',
     });
     send(response);
   });
@@ -273,7 +300,7 @@ test('server/tcp#standalone end-to-end query', async() => {
   await new Promise(resolve => server.close(resolve));
 });
 
-test('server/tcp#async handler still responds when client sends socket.end(frame)', async() => {
+test('server/tcp#async handler still responds when client sends socket.end(frame)', async () => {
   // Regression: a client that bundles query + FIN in a single socket.end()
   // would trigger 'end' on the server before an async handler had a chance
   // to call send(). The server must not half-close its write side while any
@@ -283,11 +310,11 @@ test('server/tcp#async handler still responds when client sends socket.end(frame
     setTimeout(() => {
       const response = Packet.createResponseFromRequest(request);
       response.answers.push({
-        name    : request.questions[0].name,
-        type    : Packet.TYPE.A,
-        class   : Packet.CLASS.IN,
-        ttl     : 60,
-        address : '203.0.113.99',
+        name: request.questions[0].name,
+        type: Packet.TYPE.A,
+        class: Packet.CLASS.IN,
+        ttl: 60,
+        address: '203.0.113.99',
       });
       send(response);
     }, 25);
@@ -298,7 +325,11 @@ test('server/tcp#async handler still responds when client sends socket.end(frame
   const query = new Packet();
   query.header.id = 0x9001;
   query.header.rd = 1;
-  query.questions.push({ name: 'end-with-frame.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  query.questions.push({
+    name: 'end-with-frame.test',
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
+  });
   const body = query.toBuffer();
   const len = Buffer.alloc(2);
   len.writeUInt16BE(body.length);
@@ -307,11 +338,11 @@ test('server/tcp#async handler still responds when client sends socket.end(frame
     const sock = tcp.connect(port, '127.0.0.1', () => {
       // socket.end(frame) sends both the query data and FIN. The server's
       // 'end' event will fire before the async handler calls send().
-      sock.end(Buffer.concat([ len, body ]));
+      sock.end(Buffer.concat([len, body]));
     });
     let buffered = Buffer.alloc(0);
     sock.on('data', chunk => {
-      buffered = Buffer.concat([ buffered, chunk ]);
+      buffered = Buffer.concat([buffered, chunk]);
       if (buffered.length < 2) return;
       const replyLen = buffered.readUInt16BE(0);
       if (buffered.length < 2 + replyLen) return;
@@ -319,7 +350,8 @@ test('server/tcp#async handler still responds when client sends socket.end(frame
     });
     sock.on('error', reject);
     sock.on('close', () => {
-      if (buffered.length === 0) reject(new Error('connection closed before any response'));
+      if (buffered.length === 0)
+        reject(new Error('connection closed before any response'));
     });
   });
 
@@ -328,16 +360,16 @@ test('server/tcp#async handler still responds when client sends socket.end(frame
   await new Promise(resolve => server.close(resolve));
 });
 
-test('server/tcp#pipelined queries share a connection (RFC 7766 §6.2.1.1)', async() => {
+test('server/tcp#pipelined queries share a connection (RFC 7766 §6.2.1.1)', async () => {
   const server = createTCPServer();
   server.on('request', (request, send) => {
     const response = Packet.createResponseFromRequest(request);
     response.answers.push({
-      name    : request.questions[0].name,
-      type    : Packet.TYPE.A,
-      class   : Packet.CLASS.IN,
-      ttl     : 60,
-      address : '192.0.2.42',
+      name: request.questions[0].name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 60,
+      address: '192.0.2.42',
     });
     send(response);
   });
@@ -347,7 +379,7 @@ test('server/tcp#pipelined queries share a connection (RFC 7766 §6.2.1.1)', asy
   // Build two distinct queries and send them back-to-back on one connection
   // without waiting for each reply. The server must process both and write
   // length-prefixed replies on the same socket.
-  const queries = [ 'pipe1.test', 'pipe2.test', 'pipe3.test' ].map((name, i) => {
+  const queries = ['pipe1.test', 'pipe2.test', 'pipe3.test'].map((name, i) => {
     const q = new Packet();
     q.header.id = 0x1000 + i;
     q.header.rd = 1;
@@ -355,7 +387,7 @@ test('server/tcp#pipelined queries share a connection (RFC 7766 §6.2.1.1)', asy
     const body = q.toBuffer();
     const len = Buffer.alloc(2);
     len.writeUInt16BE(body.length);
-    return { id: q.header.id, frame: Buffer.concat([ len, body ]) };
+    return { id: q.header.id, frame: Buffer.concat([len, body]) };
   });
 
   const replies = await new Promise((resolve, reject) => {
@@ -365,7 +397,7 @@ test('server/tcp#pipelined queries share a connection (RFC 7766 §6.2.1.1)', asy
     const out = [];
     let buffered = Buffer.alloc(0);
     sock.on('data', chunk => {
-      buffered = Buffer.concat([ buffered, chunk ]);
+      buffered = Buffer.concat([buffered, chunk]);
       while (buffered.length >= 2) {
         const len = buffered.readUInt16BE(0);
         if (buffered.length < 2 + len) break;
@@ -390,16 +422,16 @@ test('server/tcp#pipelined queries share a connection (RFC 7766 §6.2.1.1)', asy
   await new Promise(resolve => server.close(resolve));
 });
 
-test('server/doh#GET via DOHClient end-to-end', async() => {
+test('server/doh#GET via DOHClient end-to-end', async () => {
   const server = createDOHServer();
   server.on('request', (request, send) => {
     const response = Packet.createResponseFromRequest(request);
     response.answers.push({
-      name    : request.questions[0].name,
-      type    : Packet.TYPE.A,
-      class   : Packet.CLASS.IN,
-      ttl     : 60,
-      address : '198.51.100.30',
+      name: request.questions[0].name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 60,
+      address: '198.51.100.30',
     });
     send(response);
   });
@@ -415,16 +447,16 @@ test('server/doh#GET via DOHClient end-to-end', async() => {
   server.close();
 });
 
-test('server/doh#POST end-to-end', async() => {
+test('server/doh#POST end-to-end', async () => {
   const server = createDOHServer();
   server.on('request', (request, send) => {
     const response = Packet.createResponseFromRequest(request);
     response.answers.push({
-      name  : request.questions[0].name,
-      type  : Packet.TYPE.TXT,
-      class : Packet.CLASS.IN,
-      ttl   : 60,
-      data  : 'post-ok',
+      name: request.questions[0].name,
+      type: Packet.TYPE.TXT,
+      class: Packet.CLASS.IN,
+      ttl: 60,
+      data: 'post-ok',
     });
     send(response);
   });
@@ -435,26 +467,33 @@ test('server/doh#POST end-to-end', async() => {
 
   const packet = new Packet();
   packet.header.rd = 1;
-  packet.questions.push({ name: 'doh-post.test', type: Packet.TYPE.TXT, class: Packet.CLASS.IN });
+  packet.questions.push({
+    name: 'doh-post.test',
+    type: Packet.TYPE.TXT,
+    class: Packet.CLASS.IN,
+  });
 
   const body = await new Promise((resolve, reject) => {
-    const req = http.request({
-      host    : '127.0.0.1',
-      port,
-      path    : '/dns-query',
-      method  : 'POST',
-      headers : {
-        accept         : 'application/dns-message',
-        'content-type' : 'application/dns-message',
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/dns-query',
+        method: 'POST',
+        headers: {
+          accept: 'application/dns-message',
+          'content-type': 'application/dns-message',
+        },
       },
-    }, res => {
-      assert.equal(res.statusCode, 200);
-      assert.equal(res.headers['content-type'], 'application/dns-message');
-      const chunks = [];
-      res.on('data', c => chunks.push(c));
-      res.on('end', () => resolve(Buffer.concat(chunks)));
-      res.on('error', reject);
-    });
+      res => {
+        assert.equal(res.statusCode, 200);
+        assert.equal(res.headers['content-type'], 'application/dns-message');
+        const chunks = [];
+        res.on('data', c => chunks.push(c));
+        res.on('end', () => resolve(Buffer.concat(chunks)));
+        res.on('error', reject);
+      },
+    );
     req.on('error', reject);
     req.end(packet.toBuffer());
   });
@@ -464,20 +503,23 @@ test('server/doh#POST end-to-end', async() => {
   server.close();
 });
 
-test('server/doh#405 on unsupported method', async() => {
+test('server/doh#405 on unsupported method', async () => {
   const server = createDOHServer();
   const { port } = await new Promise(resolve => {
     server.on('listening', resolve);
     server.listen();
   });
   const { statusCode } = await new Promise((resolve, reject) => {
-    const req = http.request({
-      host    : '127.0.0.1',
-      port,
-      path    : '/dns-query',
-      method  : 'PUT',
-      headers : { accept: 'application/dns-message' },
-    }, resolve);
+    const req = http.request(
+      {
+        host: '127.0.0.1',
+        port,
+        path: '/dns-query',
+        method: 'PUT',
+        headers: { accept: 'application/dns-message' },
+      },
+      resolve,
+    );
     req.on('error', reject);
     req.end();
   });
@@ -485,25 +527,30 @@ test('server/doh#405 on unsupported method', async() => {
   server.close();
 });
 
-test('server/doh#404 on unknown path', async() => {
+test('server/doh#404 on unknown path', async () => {
   const server = createDOHServer();
   const { port } = await new Promise(resolve => {
     server.on('listening', resolve);
     server.listen();
   });
   const statusCode = await new Promise((resolve, reject) => {
-    http.get({
-      host    : '127.0.0.1',
-      port,
-      path    : '/something-else',
-      headers : { accept: 'application/dns-message' },
-    }, res => resolve(res.statusCode)).on('error', reject);
+    http
+      .get(
+        {
+          host: '127.0.0.1',
+          port,
+          path: '/something-else',
+          headers: { accept: 'application/dns-message' },
+        },
+        res => resolve(res.statusCode),
+      )
+      .on('error', reject);
   });
   assert.equal(statusCode, 404);
   server.close();
 });
 
-test('server/doh#406 on incompatible Accept header', async() => {
+test('server/doh#406 on incompatible Accept header', async () => {
   // RFC 8484 §4.1: the client SHOULD send Accept: application/dns-message but
   // the server is not required to reject other values. Only reject when the
   // client explicitly asked for media types that exclude
@@ -514,47 +561,57 @@ test('server/doh#406 on incompatible Accept header', async() => {
     server.listen();
   });
   const statusCode = await new Promise((resolve, reject) => {
-    http.get({
-      host    : '127.0.0.1',
-      port,
-      path    : '/dns-query?dns=abc',
-      headers : { accept: 'text/html' },
-    }, res => resolve(res.statusCode)).on('error', reject);
+    http
+      .get(
+        {
+          host: '127.0.0.1',
+          port,
+          path: '/dns-query?dns=abc',
+          headers: { accept: 'text/html' },
+        },
+        res => resolve(res.statusCode),
+      )
+      .on('error', reject);
   });
   assert.equal(statusCode, 406);
   server.close();
 });
 
-test('server/doh#400 on missing dns query param', async() => {
+test('server/doh#400 on missing dns query param', async () => {
   const server = createDOHServer();
   const { port } = await new Promise(resolve => {
     server.on('listening', resolve);
     server.listen();
   });
   const statusCode = await new Promise((resolve, reject) => {
-    http.get({
-      host    : '127.0.0.1',
-      port,
-      path    : '/dns-query',
-      headers : { accept: 'application/dns-message' },
-    }, res => resolve(res.statusCode)).on('error', reject);
+    http
+      .get(
+        {
+          host: '127.0.0.1',
+          port,
+          path: '/dns-query',
+          headers: { accept: 'application/dns-message' },
+        },
+        res => resolve(res.statusCode),
+      )
+      .on('error', reject);
   });
   assert.equal(statusCode, 400);
   server.close();
 });
 
-test('server/doh#GET with Accept: */* is accepted (RFC 8484 §4.1)', async() => {
+test('server/doh#GET with Accept: */* is accepted (RFC 8484 §4.1)', async () => {
   // curl-style clients send */*; the server must not reject them — it always
   // replies with application/dns-message anyway.
   const server = createDOHServer();
   server.on('request', (request, send) => {
     const response = Packet.createResponseFromRequest(request);
     response.answers.push({
-      name    : request.questions[0].name,
-      type    : Packet.TYPE.A,
-      class   : Packet.CLASS.IN,
-      ttl     : 60,
-      address : '198.51.100.40',
+      name: request.questions[0].name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 60,
+      address: '198.51.100.40',
     });
     send(response);
   });
@@ -570,54 +627,79 @@ test('server/doh#GET with Accept: */* is accepted (RFC 8484 §4.1)', async() => 
 
   const packet = new Packet();
   packet.header.rd = 1;
-  packet.questions.push({ name: 'star.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  packet.questions.push({
+    name: 'star.test',
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
+  });
   const dns = packet.toBase64URL();
   const status = await new Promise((resolve, reject) => {
-    http.get({
-      host    : '127.0.0.1',
-      port,
-      path    : `/dns-query?dns=${dns}`,
-      headers : { accept: '*/*' },
-    }, res => resolve(res.statusCode)).on('error', reject);
+    http
+      .get(
+        {
+          host: '127.0.0.1',
+          port,
+          path: `/dns-query?dns=${dns}`,
+          headers: { accept: '*/*' },
+        },
+        res => resolve(res.statusCode),
+      )
+      .on('error', reject);
   });
   assert.equal(status, 200);
   server.close();
 });
 
-test('server/doh#POST 415 on missing or wrong Content-Type (RFC 8484 §4.1)', async() => {
+test('server/doh#POST 415 on missing or wrong Content-Type (RFC 8484 §4.1)', async () => {
   const server = createDOHServer();
   const requestErrors = [];
-  server.on('request', (request, send) => send(Packet.createResponseFromRequest(request)));
+  server.on('request', (request, send) =>
+    send(Packet.createResponseFromRequest(request)),
+  );
   server.on('requestError', e => requestErrors.push(e));
   const { port } = await new Promise(resolve => {
     server.on('listening', resolve);
     server.listen();
   });
-  const sendPost = (contentType, body = Buffer.alloc(12)) => new Promise((resolve, reject) => {
-    const headers = { accept: 'application/dns-message' };
-    if (contentType) headers['content-type'] = contentType;
-    const req = http.request({
-      host   : '127.0.0.1',
-      port,
-      path   : '/dns-query',
-      method : 'POST',
-      headers,
-    }, res => resolve({ status: res.statusCode }));
-    req.on('error', err => resolve({ error: err }));
-    req.end(body);
-  });
+  const sendPost = (contentType, body = Buffer.alloc(12)) =>
+    new Promise((resolve, reject) => {
+      const headers = { accept: 'application/dns-message' };
+      if (contentType) headers['content-type'] = contentType;
+      const req = http.request(
+        {
+          host: '127.0.0.1',
+          port,
+          path: '/dns-query',
+          method: 'POST',
+          headers,
+        },
+        res => resolve({ status: res.statusCode }),
+      );
+      req.on('error', err => resolve({ error: err }));
+      req.end(body);
+    });
   assert.equal((await sendPost(undefined)).status, 415, 'missing Content-Type');
-  assert.equal((await sendPost('application/json')).status, 415, 'wrong Content-Type');
+  assert.equal(
+    (await sendPost('application/json')).status,
+    415,
+    'wrong Content-Type',
+  );
   // With the correct Content-Type the 415 check passes, so a body too short
   // for a DNS header surfaces as a server-side parse error (handler destroys
   // the connection); the client sees a socket-level error, not a 415.
   const malformed = await sendPost('application/dns-message', Buffer.alloc(0));
-  assert.ok(malformed.error, 'malformed body should fail at the socket, not return 415');
-  assert.ok(requestErrors.length >= 1, 'requestError should have fired for the malformed body');
+  assert.ok(
+    malformed.error,
+    'malformed body should fail at the socket, not return 415',
+  );
+  assert.ok(
+    requestErrors.length >= 1,
+    'requestError should have fired for the malformed body',
+  );
   server.close();
 });
 
-test('server/doh#406 when Accept lists application/dns-message with q=0', async() => {
+test('server/doh#406 when Accept lists application/dns-message with q=0', async () => {
   // Per RFC 7231 §5.3.1 q=0 means "not acceptable". An entry like
   // application/dns-message;q=0 is an explicit rejection, even though the
   // media range matches.
@@ -627,18 +709,23 @@ test('server/doh#406 when Accept lists application/dns-message with q=0', async(
     server.listen();
   });
   const status = await new Promise((resolve, reject) => {
-    http.get({
-      host    : '127.0.0.1',
-      port,
-      path    : '/dns-query?dns=abc',
-      headers : { accept: 'application/dns-message;q=0, text/html' },
-    }, res => resolve(res.statusCode)).on('error', reject);
+    http
+      .get(
+        {
+          host: '127.0.0.1',
+          port,
+          path: '/dns-query?dns=abc',
+          headers: { accept: 'application/dns-message;q=0, text/html' },
+        },
+        res => resolve(res.statusCode),
+      )
+      .on('error', reject);
   });
   assert.equal(status, 406);
   server.close();
 });
 
-test('server/doh#Cache-Control ignores OPT pseudo-RR TTL (RFC 6891)', async() => {
+test('server/doh#Cache-Control ignores OPT pseudo-RR TTL (RFC 6891)', async () => {
   // The OPT record's "TTL" field carries flags/extended RCODE; it is almost
   // always 0 and must not drive the min TTL down to zero on cacheable
   // responses.
@@ -646,11 +733,11 @@ test('server/doh#Cache-Control ignores OPT pseudo-RR TTL (RFC 6891)', async() =>
   server.on('request', (request, send) => {
     const response = Packet.createResponseFromRequest(request);
     response.answers.push({
-      name    : request.questions[0].name,
-      type    : Packet.TYPE.A,
-      class   : Packet.CLASS.IN,
-      ttl     : 120,
-      address : '203.0.113.20',
+      name: request.questions[0].name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 120,
+      address: '203.0.113.20',
     });
     // OPT in additionals with the conventional TTL=0. Without the fix, the
     // Cache-Control max-age would collapse to 0.
@@ -663,32 +750,39 @@ test('server/doh#Cache-Control ignores OPT pseudo-RR TTL (RFC 6891)', async() =>
   });
   const packet = new Packet();
   packet.header.rd = 1;
-  packet.questions.push({ name: 'opt-ttl.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
-  const dns = packet.toBase64URL();
-  const { headers } = await get(`http://127.0.0.1:${port}/dns-query?dns=${dns}`, {
-    headers: { accept: 'application/dns-message' },
+  packet.questions.push({
+    name: 'opt-ttl.test',
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
   });
+  const dns = packet.toBase64URL();
+  const { headers } = await get(
+    `http://127.0.0.1:${port}/dns-query?dns=${dns}`,
+    {
+      headers: { accept: 'application/dns-message' },
+    },
+  );
   assert.equal(headers['cache-control'], 'max-age=120');
   server.close();
 });
 
-test('server/doh#response carries Cache-Control: max-age=<min TTL> (RFC 8484 §5.1)', async() => {
+test('server/doh#response carries Cache-Control: max-age=<min TTL> (RFC 8484 §5.1)', async () => {
   const server = createDOHServer();
   server.on('request', (request, send) => {
     const response = Packet.createResponseFromRequest(request);
     response.answers.push({
-      name    : request.questions[0].name,
-      type    : Packet.TYPE.A,
-      class   : Packet.CLASS.IN,
-      ttl     : 300,
-      address : '203.0.113.10',
+      name: request.questions[0].name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 300,
+      address: '203.0.113.10',
     });
     response.answers.push({
-      name    : request.questions[0].name,
-      type    : Packet.TYPE.A,
-      class   : Packet.CLASS.IN,
-      ttl     : 30, // minimum across the two answers
-      address : '203.0.113.11',
+      name: request.questions[0].name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 30, // minimum across the two answers
+      address: '203.0.113.11',
     });
     send(response);
   });
@@ -698,27 +792,34 @@ test('server/doh#response carries Cache-Control: max-age=<min TTL> (RFC 8484 §5
   });
   const packet = new Packet();
   packet.header.rd = 1;
-  packet.questions.push({ name: 'cc.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
-  const dns = packet.toBase64URL();
-  const { headers } = await get(`http://127.0.0.1:${port}/dns-query?dns=${dns}`, {
-    headers: { accept: 'application/dns-message' },
+  packet.questions.push({
+    name: 'cc.test',
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
   });
+  const dns = packet.toBase64URL();
+  const { headers } = await get(
+    `http://127.0.0.1:${port}/dns-query?dns=${dns}`,
+    {
+      headers: { accept: 'application/dns-message' },
+    },
+  );
   assert.equal(headers['cache-control'], 'max-age=30');
   server.close();
 });
 
-test('server/all#multi-question request is preserved through handle', async() => {
+test('server/all#multi-question request is preserved through handle', async () => {
   const server = createServer({
-    udp    : true,
-    handle : (request, send) => {
+    udp: true,
+    handle: (request, send) => {
       const response = Packet.createResponseFromRequest(request);
       for (const q of request.questions) {
         response.answers.push({
-          name    : q.name,
-          type    : Packet.TYPE.A,
-          class   : Packet.CLASS.IN,
-          ttl     : 60,
-          address : '127.0.0.1',
+          name: q.name,
+          type: Packet.TYPE.A,
+          class: Packet.CLASS.IN,
+          ttl: 60,
+          address: '127.0.0.1',
         });
       }
       send(response);
@@ -730,8 +831,16 @@ test('server/all#multi-question request is preserved through handle', async() =>
   const request = new Packet();
   request.header.id = 0x4242;
   request.header.rd = 1;
-  request.questions.push({ name: 'first.multi', type: Packet.TYPE.A, class: Packet.CLASS.IN });
-  request.questions.push({ name: 'second.multi', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  request.questions.push({
+    name: 'first.multi',
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
+  });
+  request.questions.push({
+    name: 'second.multi',
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
+  });
   const client = udp.createSocket('udp4');
   const reply = await new Promise((resolve, reject) => {
     client.on('message', msg => resolve(Packet.parse(msg)));
@@ -745,20 +854,25 @@ test('server/all#multi-question request is preserved through handle', async() =>
   await server.close();
 });
 
-test('server/all#close event fires once all sub-servers close', async() => {
-  const server = createServer({ doh: true, tcp: true, udp: true, handle: () => {} });
+test('server/all#close event fires once all sub-servers close', async () => {
+  const server = createServer({
+    doh: true,
+    tcp: true,
+    udp: true,
+    handle: () => {},
+  });
   await server.listen();
   const closed = new Promise(resolve => server.on('close', resolve));
   await server.close();
   await closed;
 });
 
-test('server/all#invalid-request', async() => {
+test('server/all#invalid-request', async () => {
   const server = createServer({
-    doh    : true,
-    tcp    : true,
-    udp    : true,
-    handle : () => {},
+    doh: true,
+    tcp: true,
+    udp: true,
+    handle: () => {},
   });
   const servers = await server.listen();
   assert.ok(servers.udp.port > 1000);
@@ -766,7 +880,7 @@ test('server/all#invalid-request', async() => {
   assert.ok(servers.doh.port > 1000);
 
   const errors = [];
-  server.on('requestError', (e) => {
+  server.on('requestError', e => {
     errors.push(e);
   });
 
@@ -774,16 +888,20 @@ test('server/all#invalid-request', async() => {
   tcpSocket.on('connect', () => tcpSocket.end('INVALID'));
 
   const udpSocket = udp.createSocket('udp4');
-  udpSocket.send('INVALID', servers.udp.port, '127.0.0.1', () => udpSocket.close());
+  udpSocket.send('INVALID', servers.udp.port, '127.0.0.1', () =>
+    udpSocket.close(),
+  );
 
-  const dohConn = http.get(`http://127.0.0.1:${servers.doh.port}/dns-query?dns=INVALID`, {
-    headers: { accept: 'application/dns-message' },
-  }).on('error', () => {});
+  const dohConn = http
+    .get(`http://127.0.0.1:${servers.doh.port}/dns-query?dns=INVALID`, {
+      headers: { accept: 'application/dns-message' },
+    })
+    .on('error', () => {});
 
   await Promise.all([
-    new Promise((resolve) => tcpSocket.on('close', resolve)),
-    new Promise((resolve) => udpSocket.on('close', resolve)),
-    new Promise((resolve) => dohConn.on('close', resolve)),
+    new Promise(resolve => tcpSocket.on('close', resolve)),
+    new Promise(resolve => udpSocket.on('close', resolve)),
+    new Promise(resolve => dohConn.on('close', resolve)),
   ]);
 
   assert.equal(errors.length, 3);
@@ -791,13 +909,13 @@ test('server/all#invalid-request', async() => {
   await server.close();
 });
 
-test('server/all#handler can respond with RCODE error codes', async() => {
+test('server/all#handler can respond with RCODE error codes', async () => {
   const server = createServer({
-    udp : true,
-    tcp : true,
+    udp: true,
+    tcp: true,
     handle(request, send) {
       const response = Packet.createResponseFromRequest(request);
-      const [ question ] = request.questions;
+      const [question] = request.questions;
       if (question.name === 'refused.test') {
         response.header.rcode = Packet.RCODE.REFUSED;
       } else if (question.name === 'nxdomain.test') {
@@ -836,23 +954,25 @@ test('server/all#handler can respond with RCODE error codes', async() => {
   await server.close();
 });
 
-test('server/all#maxConcurrent - requests within limit are served normally', async() => {
+test('server/all#maxConcurrent - requests within limit are served normally', async () => {
   const server = createServer({
-    udp           : true,
-    maxConcurrent : 10,
+    udp: true,
+    maxConcurrent: 10,
     handle(request, send) {
       const response = Packet.createResponseFromRequest(request);
       response.answers.push({
-        name    : request.questions[0].name,
-        type    : Packet.TYPE.A,
-        class   : Packet.CLASS.IN,
-        ttl     : 60,
-        address : '1.2.3.4',
+        name: request.questions[0].name,
+        type: Packet.TYPE.A,
+        class: Packet.CLASS.IN,
+        ttl: 60,
+        address: '1.2.3.4',
       });
       send(response);
     },
   });
-  const { udp: { port } } = await server.listen();
+  const {
+    udp: { port },
+  } = await server.listen();
   const client = UDPClient({ dns: '127.0.0.1', port });
 
   const reply = await client('within-limit.test');
@@ -862,18 +982,20 @@ test('server/all#maxConcurrent - requests within limit are served normally', asy
   await server.close();
 });
 
-test('server/all#maxConcurrent - excess requests receive SERVFAIL', async() => {
+test('server/all#maxConcurrent - excess requests receive SERVFAIL', async () => {
   // Use a handler that holds requests open until we release them, so we can
   // saturate the concurrency limit predictably.
   const pending = [];
   const server = createServer({
-    udp           : true,
-    maxConcurrent : 2,
+    udp: true,
+    maxConcurrent: 2,
     handle(request, send) {
       pending.push({ request, send });
     },
   });
-  const { udp: { port } } = await server.listen();
+  const {
+    udp: { port },
+  } = await server.listen();
   const client = UDPClient({ dns: '127.0.0.1', port });
 
   // Fire q1 and q2 but don't await — they stay in the handler holding 2 slots.
@@ -885,7 +1007,11 @@ test('server/all#maxConcurrent - excess requests receive SERVFAIL', async() => {
 
   // q3 arrives when the limit is already full — should be shed immediately.
   const r3 = await client('q3.test');
-  assert.equal(r3.header.rcode, Packet.RCODE.SERVFAIL, 'shed request gets SERVFAIL');
+  assert.equal(
+    r3.header.rcode,
+    Packet.RCODE.SERVFAIL,
+    'shed request gets SERVFAIL',
+  );
 
   // Drain the two held requests so the server can close cleanly.
   for (const { request, send } of pending) {
@@ -893,7 +1019,7 @@ test('server/all#maxConcurrent - excess requests receive SERVFAIL', async() => {
     response.header.rcode = Packet.RCODE.NOERROR;
     send(response);
   }
-  await Promise.all([ p1, p2 ]);
+  await Promise.all([p1, p2]);
 
   await server.close();
 });
@@ -905,18 +1031,18 @@ test('server/all#maxConcurrent - excess requests receive SERVFAIL', async() => {
 
 const proxyProtocol = require('../lib/proxy-protocol');
 
-test('server/udp#proxyProtocol exposes real client address (v2 IPv4)', async() => {
+test('server/udp#proxyProtocol exposes real client address (v2 IPv4)', async () => {
   const server = createUDPServer({ proxyProtocol: true });
   let observedClient;
   server.on('request', (request, send, info) => {
     observedClient = info;
     const response = Packet.createResponseFromRequest(request);
     response.answers.push({
-      name    : request.questions[0].name,
-      type    : Packet.TYPE.A,
-      class   : Packet.CLASS.IN,
-      ttl     : 60,
-      address : '127.0.0.1',
+      name: request.questions[0].name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 60,
+      address: '127.0.0.1',
     });
     send(response);
   });
@@ -927,15 +1053,19 @@ test('server/udp#proxyProtocol exposes real client address (v2 IPv4)', async() =
   const query = new Packet();
   query.header.id = 0x4321;
   query.header.rd = 1;
-  query.questions.push({ name: 'proxied.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
-  const header = proxyProtocol.buildV2Ipv4({
-    sourceAddress      : '203.0.113.77',
-    destinationAddress : '127.0.0.1',
-    sourcePort         : 50001,
-    destinationPort    : serverPort,
-    transport          : 'DGRAM',
+  query.questions.push({
+    name: 'proxied.test',
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
   });
-  const datagram = Buffer.concat([ header, query.toBuffer() ]);
+  const header = proxyProtocol.buildV2Ipv4({
+    sourceAddress: '203.0.113.77',
+    destinationAddress: '127.0.0.1',
+    sourcePort: 50001,
+    destinationPort: serverPort,
+    transport: 'DGRAM',
+  });
+  const datagram = Buffer.concat([header, query.toBuffer()]);
 
   const sender = udp.createSocket('udp4');
   const reply = await new Promise((resolve, reject) => {
@@ -954,19 +1084,27 @@ test('server/udp#proxyProtocol exposes real client address (v2 IPv4)', async() =
   await new Promise(resolve => server.close(resolve));
 });
 
-test('server/udp#proxyProtocol with missing header emits requestError', async() => {
+test('server/udp#proxyProtocol with missing header emits requestError', async () => {
   const server = createUDPServer({ proxyProtocol: true });
   let captured;
-  server.on('requestError', e => { captured = e; });
+  server.on('requestError', e => {
+    captured = e;
+  });
   await server.listen(0, '127.0.0.1');
   const { port: serverPort } = server.address();
 
   const query = new Packet();
   query.header.id = 1;
-  query.questions.push({ name: 'noheader.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  query.questions.push({
+    name: 'noheader.test',
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
+  });
 
   const sender = udp.createSocket('udp4');
-  await new Promise(resolve => sender.send(query.toBuffer(), serverPort, '127.0.0.1', resolve));
+  await new Promise(resolve =>
+    sender.send(query.toBuffer(), serverPort, '127.0.0.1', resolve),
+  );
   // Give the server a moment to handle the datagram.
   await new Promise(resolve => setTimeout(resolve, 20));
   await new Promise(resolve => sender.close(resolve));
@@ -976,18 +1114,22 @@ test('server/udp#proxyProtocol with missing header emits requestError', async() 
   await new Promise(resolve => server.close(resolve));
 });
 
-test('server/tcp#proxyProtocol v1 exposes real client address', async() => {
+test('server/tcp#proxyProtocol v1 exposes real client address', async () => {
   const server = createTCPServer({ proxyProtocol: true });
   let observed;
   server.on('request', (request, send, client) => {
-    observed = { address: client.proxyAddress, port: client.proxyPort, proxy: client.proxy };
+    observed = {
+      address: client.proxyAddress,
+      port: client.proxyPort,
+      proxy: client.proxy,
+    };
     const response = Packet.createResponseFromRequest(request);
     response.answers.push({
-      name    : request.questions[0].name,
-      type    : Packet.TYPE.A,
-      class   : Packet.CLASS.IN,
-      ttl     : 60,
-      address : '127.0.0.1',
+      name: request.questions[0].name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 60,
+      address: '127.0.0.1',
     });
     send(response);
   });
@@ -996,19 +1138,26 @@ test('server/tcp#proxyProtocol v1 exposes real client address', async() => {
 
   const query = new Packet();
   query.header.id = 0x1111;
-  query.questions.push({ name: 'proxied-tcp.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  query.questions.push({
+    name: 'proxied-tcp.test',
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
+  });
   const dnsMessage = query.toBuffer();
   const length = Buffer.alloc(2);
   length.writeUInt16BE(dnsMessage.length);
   const proxyHeader = proxyProtocol.buildV1({
-    family             : 'TCP4',
-    sourceAddress      : '198.51.100.42',
-    destinationAddress : '127.0.0.1',
-    sourcePort         : 51515,
-    destinationPort    : serverPort,
+    family: 'TCP4',
+    sourceAddress: '198.51.100.42',
+    destinationAddress: '127.0.0.1',
+    sourcePort: 51515,
+    destinationPort: serverPort,
   });
 
-  const reply = await readOneTcpReply(serverPort, Buffer.concat([ proxyHeader, length, dnsMessage ]));
+  const reply = await readOneTcpReply(
+    serverPort,
+    Buffer.concat([proxyHeader, length, dnsMessage]),
+  );
 
   assert.equal(reply.header.id, 0x1111);
   assert.equal(reply.answers[0].address, '127.0.0.1');
@@ -1018,18 +1167,22 @@ test('server/tcp#proxyProtocol v1 exposes real client address', async() => {
   await new Promise(resolve => server.close(resolve));
 });
 
-test('server/tcp#proxyProtocol v2 exposes real client address', async() => {
+test('server/tcp#proxyProtocol v2 exposes real client address', async () => {
   const server = createTCPServer({ proxyProtocol: true });
   let observed;
   server.on('request', (request, send, client) => {
-    observed = { address: client.proxyAddress, port: client.proxyPort, version: client.proxy.version };
+    observed = {
+      address: client.proxyAddress,
+      port: client.proxyPort,
+      version: client.proxy.version,
+    };
     const response = Packet.createResponseFromRequest(request);
     response.answers.push({
-      name    : request.questions[0].name,
-      type    : Packet.TYPE.A,
-      class   : Packet.CLASS.IN,
-      ttl     : 60,
-      address : '127.0.0.1',
+      name: request.questions[0].name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 60,
+      address: '127.0.0.1',
     });
     send(response);
   });
@@ -1038,18 +1191,25 @@ test('server/tcp#proxyProtocol v2 exposes real client address', async() => {
 
   const query = new Packet();
   query.header.id = 0x2222;
-  query.questions.push({ name: 'proxied-tcp-v2.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  query.questions.push({
+    name: 'proxied-tcp-v2.test',
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
+  });
   const dnsMessage = query.toBuffer();
   const length = Buffer.alloc(2);
   length.writeUInt16BE(dnsMessage.length);
   const proxyHeader = proxyProtocol.buildV2Ipv4({
-    sourceAddress      : '198.51.100.99',
-    destinationAddress : '127.0.0.1',
-    sourcePort         : 52525,
-    destinationPort    : serverPort,
+    sourceAddress: '198.51.100.99',
+    destinationAddress: '127.0.0.1',
+    sourcePort: 52525,
+    destinationPort: serverPort,
   });
 
-  const reply = await readOneTcpReply(serverPort, Buffer.concat([ proxyHeader, length, dnsMessage ]));
+  const reply = await readOneTcpReply(
+    serverPort,
+    Buffer.concat([proxyHeader, length, dnsMessage]),
+  );
 
   assert.equal(reply.header.id, 0x2222);
   assert.equal(observed.address, '198.51.100.99');
@@ -1058,10 +1218,12 @@ test('server/tcp#proxyProtocol v2 exposes real client address', async() => {
   await new Promise(resolve => server.close(resolve));
 });
 
-test('server/tcp#proxyProtocol with garbage prefix emits requestError', async() => {
+test('server/tcp#proxyProtocol with garbage prefix emits requestError', async () => {
   const server = createTCPServer({ proxyProtocol: true });
   let captured;
-  server.on('requestError', e => { captured = e; });
+  server.on('requestError', e => {
+    captured = e;
+  });
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const { port: serverPort } = server.address();
 
@@ -1080,22 +1242,25 @@ test('server/tcp#proxyProtocol with garbage prefix emits requestError', async() 
   await new Promise(resolve => server.close(resolve));
 });
 
-test('server/udp/tcp without proxyProtocol still work normally', async() => {
+test('server/udp/tcp without proxyProtocol still work normally', async () => {
   // Regression guard: enabling the option is opt-in; default behavior unchanged.
   const udpServer = createUDPServer();
   udpServer.on('request', (request, send) => {
     const response = Packet.createResponseFromRequest(request);
     response.answers.push({
-      name    : request.questions[0].name,
-      type    : Packet.TYPE.A,
-      class   : Packet.CLASS.IN,
-      ttl     : 60,
-      address : '10.0.0.1',
+      name: request.questions[0].name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 60,
+      address: '10.0.0.1',
     });
     send(response);
   });
   await udpServer.listen(0, '127.0.0.1');
-  const udpQuery = UDPClient({ dns: '127.0.0.1', port: udpServer.address().port });
+  const udpQuery = UDPClient({
+    dns: '127.0.0.1',
+    port: udpServer.address().port,
+  });
   const udpReply = await udpQuery('plain.test');
   assert.equal(udpReply.answers[0].address, '10.0.0.1');
   await new Promise(resolve => udpServer.close(resolve));
@@ -1104,16 +1269,19 @@ test('server/udp/tcp without proxyProtocol still work normally', async() => {
   tcpServer.on('request', (request, send) => {
     const response = Packet.createResponseFromRequest(request);
     response.answers.push({
-      name    : request.questions[0].name,
-      type    : Packet.TYPE.A,
-      class   : Packet.CLASS.IN,
-      ttl     : 60,
-      address : '10.0.0.2',
+      name: request.questions[0].name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 60,
+      address: '10.0.0.2',
     });
     send(response);
   });
   await new Promise(resolve => tcpServer.listen(0, '127.0.0.1', resolve));
-  const tcpQuery = TCPClient({ dns: '127.0.0.1', port: tcpServer.address().port });
+  const tcpQuery = TCPClient({
+    dns: '127.0.0.1',
+    port: tcpServer.address().port,
+  });
   const tcpReply = await tcpQuery('plain.test');
   assert.equal(tcpReply.answers[0].address, '10.0.0.2');
   await new Promise(resolve => tcpServer.close(resolve));

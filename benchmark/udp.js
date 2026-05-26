@@ -20,7 +20,9 @@ const CONCURRENCY = parseInt(process.env.CONCURRENCY || '100', 10);
 const DNS_TARGET = process.env.DNS || null;
 
 function percentile(sorted, p) {
-  return sorted[Math.max(0, Math.floor(sorted.length * p / 100) - 1 + (p === 100 ? 1 : 0))];
+  return sorted[
+    Math.max(0, Math.floor((sorted.length * p) / 100) - 1 + (p === 100 ? 1 : 0))
+  ];
 }
 
 async function run() {
@@ -38,13 +40,13 @@ async function run() {
       udp: true,
       handle(request, send) {
         const response = Packet.createResponseFromRequest(request);
-        const [ q ] = request.questions;
+        const [q] = request.questions;
         response.answers.push({
-          name    : q.name,
-          type    : Packet.TYPE.A,
-          class   : Packet.CLASS.IN,
-          ttl     : 60,
-          address : '127.0.0.1',
+          name: q.name,
+          type: Packet.TYPE.A,
+          class: Packet.CLASS.IN,
+          ttl: 60,
+          address: '127.0.0.1',
         });
         send(response);
       },
@@ -64,7 +66,7 @@ async function run() {
 
   const wallStart = Date.now();
 
-  await new Promise((resolve) => {
+  await new Promise(resolve => {
     let sent = 0;
     let inFlight = 0;
 

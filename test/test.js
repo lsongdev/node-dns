@@ -9,7 +9,7 @@ let previous = Promise.resolve();
  * @github https://github.com/song940
  */
 const test = (title, fn) => {
-  previous = previous.then(async() => {
+  previous = previous.then(async () => {
     try {
       await fn();
       console.log(color(` ✔  ${title}`, 32));

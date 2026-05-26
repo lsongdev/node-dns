@@ -20,24 +20,38 @@ class DNS extends EventEmitter {
     // Accept `dns` as a shorthand alias for `nameServers` so that
     // `new DNS({ dns: '8.8.8.8' })` works as documented and intuited.
     if (options.dns != null && options.nameServers == null) {
-      options = Object.assign({}, options, { nameServers: [].concat(options.dns) });
+      options = Object.assign({}, options, {
+        nameServers: [].concat(options.dns),
+      });
     }
-    Object.assign(this, {
-      port             : 53,
-      retries          : 3,
-      timeout          : 3,
-      recursive        : true,
-      retryOverTCP     : true,
-      resolverProtocol : 'UDP',
-      nameServers      : [
-        '8.8.8.8',
-        '114.114.114.114',
-      ],
-      rootServers: [
-        'a', 'b', 'c', 'd', 'e', 'f',
-        'g', 'h', 'i', 'j', 'k', 'l', 'm',
-      ].map(x => `${x}.root-servers.net`),
-    }, options);
+    Object.assign(
+      this,
+      {
+        port: 53,
+        retries: 3,
+        timeout: 3,
+        recursive: true,
+        retryOverTCP: true,
+        resolverProtocol: 'UDP',
+        nameServers: ['8.8.8.8', '114.114.114.114'],
+        rootServers: [
+          'a',
+          'b',
+          'c',
+          'd',
+          'e',
+          'f',
+          'g',
+          'h',
+          'i',
+          'j',
+          'k',
+          'l',
+          'm',
+        ].map(x => `${x}.root-servers.net`),
+      },
+      options,
+    );
   }
 
   /**
@@ -49,10 +63,12 @@ class DNS extends EventEmitter {
   resolve(domain, type = 'ANY', cls = DNS.Packet.CLASS.IN, options = {}) {
     const { port, nameServers, resolverProtocol = 'UDP', retryOverTCP } = this;
     const createResolver = DNS[resolverProtocol + 'Client'];
-    return Promise.race(nameServers.map(address => {
-      const resolve = createResolver({ dns: address, port, retryOverTCP });
-      return resolve(domain, type, cls, options);
-    }));
+    return Promise.race(
+      nameServers.map(address => {
+        const resolve = createResolver({ dns: address, port, retryOverTCP });
+        return resolve(domain, type, cls, options);
+      }),
+    );
   }
 
   resolveA(domain, clientIp) {

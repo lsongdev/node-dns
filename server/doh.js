@@ -8,9 +8,7 @@ const { debuglog } = require('node:util');
 const debug = debuglog('dns2-server');
 
 const decodeBase64URL = str => {
-  let queryData = str
-    .replace(/-/g, '+')
-    .replace(/_/g, '/');
+  let queryData = str.replace(/-/g, '+').replace(/_/g, '/');
   const pad = queryData.length % 4;
   if (pad === 1) return;
   if (pad) {
@@ -19,13 +17,14 @@ const decodeBase64URL = str => {
   return queryData;
 };
 
-const readStream = stream => new Promise((resolve, reject) => {
-  const chunks = [];
-  stream
-    .on('error', reject)
-    .on('data', chunk => chunks.push(chunk))
-    .on('end', () => resolve(Buffer.concat(chunks)));
-});
+const readStream = stream =>
+  new Promise((resolve, reject) => {
+    const chunks = [];
+    stream
+      .on('error', reject)
+      .on('data', chunk => chunks.push(chunk))
+      .on('end', () => resolve(Buffer.concat(chunks)));
+  });
 
 // RFC 8484 §4.1 — accept the request unless the client explicitly asked for
 // media types that exclude application/dns-message.
@@ -34,28 +33,29 @@ const readStream = stream => new Promise((resolve, reject) => {
 // like "application/dns-message;q=0" is an explicit rejection even though
 // the media range matches. Parse q and treat q=0 as absent for matching;
 // only if no surviving entry matches do we reject the request.
-const parseAccept = accept => accept.split(',').map(entry => {
-  const parts = entry.split(';').map(s => s.trim());
-  const type = (parts.shift() || '').toLowerCase();
-  let q = 1;
-  for (const param of parts) {
-    const [ name, value ] = param.split('=').map(s => s.trim());
-    if (name && name.toLowerCase() === 'q') {
-      const parsed = parseFloat(value);
-      if (Number.isFinite(parsed)) q = parsed;
+const parseAccept = accept =>
+  accept.split(',').map(entry => {
+    const parts = entry.split(';').map(s => s.trim());
+    const type = (parts.shift() || '').toLowerCase();
+    let q = 1;
+    for (const param of parts) {
+      const [name, value] = param.split('=').map(s => s.trim());
+      if (name && name.toLowerCase() === 'q') {
+        const parsed = parseFloat(value);
+        if (Number.isFinite(parsed)) q = parsed;
+      }
     }
-  }
-  return { type, q };
-});
+    return { type, q };
+  });
 
 const isAcceptable = accept => {
   if (!accept) return true;
-  return parseAccept(accept).some(({ type, q }) =>
-    q > 0 && (
-      type === '*/*' ||
-      type === 'application/*' ||
-      type === 'application/dns-message'
-    ),
+  return parseAccept(accept).some(
+    ({ type, q }) =>
+      q > 0 &&
+      (type === '*/*' ||
+        type === 'application/*' ||
+        type === 'application/dns-message'),
   );
 };
 
@@ -69,7 +69,11 @@ const isAcceptable = accept => {
 // whose TTL field is not a real TTL).
 const minResponseTtl = packet => {
   let min = Infinity;
-  for (const section of [ packet.answers, packet.authorities, packet.additionals ]) {
+  for (const section of [
+    packet.answers,
+    packet.authorities,
+    packet.additionals,
+  ]) {
     if (!section) continue;
     for (const rr of section) {
       if (!rr || typeof rr.ttl !== 'number') continue;
@@ -78,7 +82,7 @@ const minResponseTtl = packet => {
     }
   }
   if (!Number.isFinite(min) || min < 0) return 0;
-  return Math.min(min >>> 0, 0x7FFFFFFF);
+  return Math.min(min >>> 0, 0x7fffffff);
 };
 
 class Server extends EventEmitter {
@@ -108,13 +112,16 @@ class Server extends EventEmitter {
         res.setHeader('Vary', 'Origin');
       } else if (typeof cors === 'function') {
         const isAllowed = cors(headers.origin);
-        res.setHeader('Access-Control-Allow-Origin', isAllowed ? headers.origin : 'false');
+        res.setHeader(
+          'Access-Control-Allow-Origin',
+          isAllowed ? headers.origin : 'false',
+        );
         res.setHeader('Vary', 'Origin');
       }
       // debug
       debug('request', method, url);
       // We are only handling get and post as reqired by rfc
-      if ((method !== 'GET' && method !== 'POST')) {
+      if (method !== 'GET' && method !== 'POST') {
         res.writeHead(405, { 'Content-Type': 'text/plain' });
         res.write('405 Method not allowed\n');
         res.end();
@@ -162,10 +169,15 @@ class Server extends EventEmitter {
       } else if (method === 'POST') {
         // RFC 8484 §4.1: POST request bodies have Content-Type:
         // application/dns-message. Anything else is unsupported.
-        const ct = (headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+        const ct = (headers['content-type'] || '')
+          .split(';')[0]
+          .trim()
+          .toLowerCase();
         if (ct !== 'application/dns-message') {
           res.writeHead(415, { 'Content-Type': 'text/plain' });
-          res.write('415 Unsupported Media Type: expected application/dns-message\n');
+          res.write(
+            '415 Unsupported Media Type: expected application/dns-message\n',
+          );
           res.end();
           return;
         }
