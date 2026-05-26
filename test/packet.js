@@ -317,7 +317,8 @@ test('Packet#encode', function () {
     type: Packet.TYPE.TXT,
     class: Packet.CLASS.IN,
     ttl: 300,
-    data: '#v=spf1 include:_spf.google.com ~all',
+    // TXT data is an array of <character-string> items (RFC 1035 §3.3.14).
+    data: ['#v=spf1 include:_spf.google.com ~all'],
   });
 
   assert.deepEqual(Packet.parse(response.toBuffer()), response);
@@ -343,10 +344,7 @@ test('Packet#encode array of character strings', function () {
     data: dkim,
   });
 
-  assert.equal(
-    Packet.parse(response.toBuffer()).answers[0].data,
-    dkim.join(''),
-  );
+  assert.deepEqual(Packet.parse(response.toBuffer()).answers[0].data, dkim);
 });
 
 test('EDNS.ECS#encode', function () {
@@ -511,9 +509,9 @@ test('Resource#TXT round-trip single string', function () {
     type: Packet.TYPE.TXT,
     class: Packet.CLASS.IN,
     ttl: 300,
-    data: 'hello world',
+    data: 'hello world', // encoder normalizes string → [string]
   });
-  assert.equal(out.data, 'hello world');
+  assert.deepEqual(out.data, ['hello world']);
 });
 
 test('Resource#TXT round-trip with utf-8', function () {
@@ -524,7 +522,57 @@ test('Resource#TXT round-trip with utf-8', function () {
     ttl: 300,
     data: 'café résumé 日本',
   });
-  assert.equal(out.data, 'café résumé 日本');
+  assert.deepEqual(out.data, ['café résumé 日本']);
+});
+
+test('Resource#TXT preserves character-string boundaries', function () {
+  // SPF/DKIM-style multi-string TXT records must not be merged on decode.
+  const chunks = ['part-one ', 'part-two ', 'part-three'];
+  const out = roundTripAnswer({
+    name: 'multi.example',
+    type: Packet.TYPE.TXT,
+    class: Packet.CLASS.IN,
+    ttl: 60,
+    data: chunks,
+  });
+  assert.deepEqual(out.data, chunks);
+});
+
+test('Resource#TXT decode rejects character-string overruns RDATA', function () {
+  // Hand-built TXT rdata: rdlength=5, but the first character-string claims
+  // length 10. Direct caller should see a thrown error.
+  const reader = new Packet.Reader(Buffer.from([0x0a, 0x61, 0x62, 0x63, 0x64]));
+  assert.throws(
+    () => Packet.Resource.TXT.decode.call({}, reader, 5),
+    /overruns RDATA/,
+  );
+});
+
+test('Resource#TXT decode error does not cascade to following RRs', function () {
+  // A malformed TXT record (rdlength=5, chunkLength=10) must consume its
+  // declared rdlength before throwing, so the A record after it parses
+  // cleanly. Without the bounds check the reader would be misaligned and
+  // the second record would be lost.
+  const pkt = Buffer.from([
+    // header: id=1, ancount=2, others 0
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,
+    // answer 1: name "t", TYPE=TXT, CLASS=IN, TTL=60, RDLENGTH=5,
+    //           rdata = [chunkLen=10, 4 bogus bytes]  ← chunkLen overruns
+    0x01, 0x74, 0x00, 0x00, 0x10, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00,
+    0x05, 0x0a, 0x61, 0x62, 0x63, 0x64,
+    // answer 2: name "a", TYPE=A, CLASS=IN, TTL=60, RDLENGTH=4, 192.0.2.7
+    0x01, 0x61, 0x00, 0x00, 0x01, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00,
+    0x04, 0xc0, 0x00, 0x02, 0x07,
+  ]);
+  const parsed = Packet.parse(pkt);
+  assert.equal(
+    parsed.answers.length,
+    1,
+    'the malformed TXT should be dropped, leaving only the A record',
+  );
+  assert.equal(parsed.answers[0].type, Packet.TYPE.A);
+  assert.equal(parsed.answers[0].name, 'a');
+  assert.equal(parsed.answers[0].address, '192.0.2.7');
 });
 
 test('Resource#SOA round-trip', function () {
