@@ -151,7 +151,7 @@ test('server/udp-tcp#simple-request-async-response', async () => {
   const tcpClient = TCPClient({ dns: '127.0.0.1', port: servers.tcp.port });
   const udpClient = UDPClient({ dns: '127.0.0.1', port: servers.udp.port });
   const expected = [
-    { name: 'test.com', ttl: 300, type: 16, class: 1, data: 'Hello World' },
+    { name: 'test.com', ttl: 300, type: 16, class: 1, data: ['Hello World'] },
   ];
   assert.deepEqual((await tcpClient('test.com')).answers, expected);
   assert.deepEqual((await udpClient('test.com')).answers, expected);
@@ -456,7 +456,7 @@ test('server/doh#POST end-to-end', async () => {
       type: Packet.TYPE.TXT,
       class: Packet.CLASS.IN,
       ttl: 60,
-      data: 'post-ok',
+      data: ['post-ok'],
     });
     send(response);
   });
@@ -499,7 +499,7 @@ test('server/doh#POST end-to-end', async () => {
   });
   const parsed = Packet.parse(body);
   assert.equal(parsed.answers.length, 1);
-  assert.equal(parsed.answers[0].data, 'post-ok');
+  assert.deepEqual(parsed.answers[0].data, ['post-ok']);
   server.close();
 });
 

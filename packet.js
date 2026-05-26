@@ -768,22 +768,36 @@ Packet.Resource.PTR = Packet.Resource.CNAME = {
  * @docs https://tools.ietf.org/html/rfc1035#section-3.3.14
  */
 Packet.Resource.SPF = Packet.Resource.TXT = {
+  // RFC 1035 §3.3.14: TXT RDATA is one or more length-prefixed
+  // <character-string> items. Preserve those boundaries by returning an
+  // array — joining them silently corrupts SPF/DKIM and other multi-string
+  // records whose semantics depend on segmentation.
   decode: function (reader, length) {
-    const parts = [];
+    const strings = [];
     let bytesRead = 0;
-    let chunkLength;
-
     while (bytesRead < length) {
-      chunkLength = reader.read(8); // text length
+      const chunkLength = reader.read(8);
       bytesRead++;
-
-      while (chunkLength--) {
-        parts.push(reader.read(8));
-        bytesRead++;
+      // A character-string whose length runs past the end of RDATA would
+      // make us read into the next record. Skip the remainder of the rdata
+      // before throwing so the next record decodes from the correct offset
+      // instead of cascading the error through every following RR.
+      if (chunkLength > length - bytesRead) {
+        const remaining = length - bytesRead;
+        for (let i = 0; i < remaining; i++) reader.read(8);
+        throw new Error(
+          `TXT decode: character-string of ${chunkLength} octets overruns ` +
+            `RDATA (${remaining} octets remaining)`,
+        );
       }
+      const bytes = Buffer.alloc(chunkLength);
+      for (let i = 0; i < chunkLength; i++) {
+        bytes[i] = reader.read(8);
+      }
+      bytesRead += chunkLength;
+      strings.push(bytes.toString('utf8'));
     }
-
-    this.data = Buffer.from(parts).toString('utf8');
+    this.data = strings;
     return this;
   },
   encode: function (record, writer) {

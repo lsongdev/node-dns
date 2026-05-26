@@ -4,6 +4,11 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Unreleased
 
+### [3.0.0] - 2026-05-26
+
+- **BREAKING**, TXT `data` is now always an array of strings
+- fix(packet): TXT decode preserves character-string boundaries (RFC 1035 §3.3.14)
+
 ### [2.4.0] - 2026-05-26
 
 - feat(ESM): dual published with ESM support
