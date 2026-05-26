@@ -4,18 +4,20 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Unreleased
 
+### [2.4.0] - 2026-05-26
+
 - feat(ESM): dual published with ESM support
 - feat(packet): encode name compression pointers (RFC 1035 §4.1.4)
 - feat(server/udp): negotiated UDP payload size with TC=1 on oversize
 - feat(server/tcp): pipeline support (RFC 7766 §6.2.1.1)
 - feat(packet): EDNS extended RCODE supported
+- feat(server/doh): DoH responses include TTL-derived Cache-Control
 - fix(packet): EDNS default UDP payload size raised to 4096
 - fix(packet): clamps TTLs to 2³¹−1
 - fix(packet): Label and name length validation (RFC 1035 §2.3.4)
+- fix(packet): Packet.Header.toBuffer writes Z=0 (RFC 1035 §4.1.1)
 - fix(server/doh): accepts any (or absent) Accept header (RFC 8484 §4.1)
 - fix(server/doh): DoH POST requires Content-Type: application/dns-message
-- feat(server/doh): DoH responses include TTL-derived Cache-Control
-- fix(packet): Packet.Header.toBuffer writes Z=0 (RFC 1035 §4.1.1)
 - style(prettier): update to prettier #129
 
 ### [2.3.0] - 2026-05-25
@@ -71,6 +73,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - fix(packet): ensure compressed IPv6 is valid #70
 - doc(README): correct `server.listen` options
 
+[2.4.0]: https://github.com/lsongdev/node-dns/releases/tag/v2.4.0
 [2.3.0]: https://github.com/lsongdev/node-dns/releases/tag/v2.3.0
 [2.2.0]: https://github.com/lsongdev/node-dns/releases/tag/v2.2.0
 [2.2.1]: https://github.com/lsongdev/node-dns/releases/tag/v2.2.1
