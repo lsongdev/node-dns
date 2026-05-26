@@ -240,8 +240,11 @@ Packet.Header = function(header) {
   this.rd = 0;
   this.ra = 0;
   this.z = 0;
+  this.ad = 0;
+  this.cd = 0;
   this.rcode = 0;
   this.qdcount = 0;
+  this.ancount = 0;
   this.nscount = 0;
   this.arcount = 0;
   for (const k in header) {
@@ -267,7 +270,10 @@ Packet.Header.parse = function(reader) {
   header.tc = reader.read(1);
   header.rd = reader.read(1);
   header.ra = reader.read(1);
-  header.z = reader.read(3);
+  // RFC 4035 §3.2.3 repurposed the second and third Z bits as AD and CD.
+  header.z = reader.read(1);
+  header.ad = reader.read(1);
+  header.cd = reader.read(1);
   header.rcode = reader.read(4);
   header.qdcount = reader.read(16);
   header.ancount = reader.read(16);
@@ -289,7 +295,9 @@ Packet.Header.prototype.toBuffer = function(writer) {
   writer.write(this.tc, 1);
   writer.write(this.rd, 1);
   writer.write(this.ra, 1);
-  writer.write(this.z, 3);
+  writer.write(this.z, 1);
+  writer.write(this.ad, 1);
+  writer.write(this.cd, 1);
   writer.write(this.rcode, 4);
   writer.write(this.qdcount, 16);
   writer.write(this.ancount, 16);
@@ -457,11 +465,18 @@ Packet.Name = {
       reader = new Packet.Reader(reader);
     }
     const name = []; let o; let len = reader.read(8);
+    // Track each pointer target we follow. A crafted packet can chain
+    // pointers in a cycle; without this guard, decode would loop forever.
+    const visited = new Set();
     while (len) {
       if ((len & Packet.Name.COPY) === Packet.Name.COPY) {
         len -= Packet.Name.COPY;
         len = len << 8;
         const pos = len + reader.read(8);
+        if (visited.has(pos)) {
+          throw new Error('Name decode: pointer cycle detected');
+        }
+        visited.add(pos);
         if (!o) o = reader.offset;
         reader.offset = pos * 8;
         len = reader.read(8);
@@ -740,19 +755,42 @@ Packet.Resource.SRV = {
   },
 };
 
-Packet.Resource.EDNS = function(rdata) {
+// RFC 6891 §6.1.3 — the OPT record's TTL field carries:
+//   bits  0- 7: extended RCODE (high byte of a 12-bit RCODE)
+//   bits  8-15: EDNS version
+//   bit   16:   DO (DNSSEC OK)
+//   bits 17-31: reserved Z, must be zero
+const ednsTtl = (extendedRcode, version, doFlag) =>
+  (((extendedRcode & 0xff) << 24) >>> 0)
+  | ((version & 0xff) << 16)
+  | (doFlag ? 0x8000 : 0);
+
+Packet.Resource.EDNS = function(rdata, opts = {}) {
+  const extendedRcode = opts.extendedRcode || 0;
+  const version = opts.version || 0;
+  const doFlag = !!opts.doFlag;
+  const udpPayloadSize = opts.udpPayloadSize || 512;
   return {
     type  : Packet.TYPE.EDNS,
-    class : 512, // Supported UDP Payload size
-    ttl   : 0, // Extended RCODE and flags
+    class : udpPayloadSize,
+    ttl   : ednsTtl(extendedRcode, version, doFlag),
+    extendedRcode,
+    version,
+    doFlag,
     rdata, // Objects of type Packet.Resource.EDNS.*
   };
 };
 
 Packet.Resource.EDNS.decode = function(reader, length) {
-  this.type = Packet.TYPE.EDNS;
-  this.class = 512;
-  this.ttl = 0;
+  // When invoked through Resource.parse, this.type/class/ttl are already set
+  // from the wire. Direct callers (e.g. unit tests) hit defaults instead.
+  this.type = this.type ?? Packet.TYPE.EDNS;
+  this.class = this.class ?? 512;
+  const ttl = this.ttl ?? 0;
+  this.ttl = ttl;
+  this.extendedRcode = (ttl >>> 24) & 0xff;
+  this.version = (ttl >>> 16) & 0xff;
+  this.doFlag = !!(ttl & 0x8000);
   this.rdata = [];
 
   while (length) {
@@ -845,15 +883,46 @@ Packet.Resource.EDNS.ECS.decode = function(reader, length) {
 };
 
 Packet.Resource.EDNS.ECS.encode = function(record, writer) {
-  const ip = record.ip.split('.').map(s => parseInt(s));
+  // RFC 7871 §6: the ADDRESS field carries only the leftmost
+  // ceil(sourcePrefixLength / 8) octets.
+  const octets = Math.ceil(record.sourcePrefixLength / 8);
   writer.write(record.family, 16);
   writer.write(record.sourcePrefixLength, 8);
   writer.write(record.scopePrefixLength, 8);
-  writer.write(ip[0], 8);
-  writer.write(ip[1], 8);
-  writer.write(ip[2], 8);
-  writer.write(ip[3], 8);
+  let bytes;
+  if (record.family === 1) {
+    bytes = record.ip.split('.').map(s => parseInt(s, 10) || 0);
+  } else if (record.family === 2) {
+    bytes = expandIPv6ToBytes(record.ip);
+  } else {
+    throw new Error(`EDNS.ECS encode: unsupported family ${record.family}`);
+  }
+  for (let i = 0; i < octets; i++) {
+    writer.write(bytes[i] || 0, 8);
+  }
 };
+
+// Expand a (possibly compressed) IPv6 text address into a 16-byte array.
+function expandIPv6ToBytes(address) {
+  let head, tail;
+  const idx = address.indexOf('::');
+  if (idx === -1) {
+    head = address.split(':');
+    tail = [];
+  } else {
+    head = address.slice(0, idx).split(':').filter(Boolean);
+    tail = address.slice(idx + 2).split(':').filter(Boolean);
+  }
+  const missing = 8 - head.length - tail.length;
+  const groups = [ ...head, ...new Array(missing).fill('0'), ...tail ];
+  const out = new Array(16).fill(0);
+  for (let g = 0; g < 8; g++) {
+    const n = parseInt(groups[g], 16) || 0;
+    out[g * 2] = (n >> 8) & 0xff;
+    out[g * 2 + 1] = n & 0xff;
+  }
+  return out;
+}
 
 Packet.Resource.CAA = {
   encode: function(record, writer) {

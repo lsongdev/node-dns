@@ -221,11 +221,13 @@ test('EDNS.ECS#encode', function() {
     new Packet.Resource.EDNS.ECS('10.11.12.13/24'),
   ]);
 
+  // RFC 7871 §6: ADDRESS field is only ceil(sourcePrefixLength/8) octets,
+  // so /24 writes 3 address bytes (10.11.12), not 4.
   const b = Packet.Resource.encode(query);
   assert.deepEqual(b, Buffer.from([
     0x00, 0x00, 0x29, 0x02, 0x00, 0x00, 0x00, 0x00,
-    0x00, 0x00, 0x0c, 0x00, 0x08, 0x00, 0x08, 0x00,
-    0x01, 0x18, 0x00, 0x0a, 0x0b, 0x0c, 0x0d ]));
+    0x00, 0x00, 0x0b, 0x00, 0x08, 0x00, 0x07, 0x00,
+    0x01, 0x18, 0x00, 0x0a, 0x0b, 0x0c ]));
 });
 
 test('EDNS#decode', function() {
@@ -770,6 +772,115 @@ test('Packet.uuid exercises the full 16-bit range with high diversity', function
   for (let q = 0; q < 4; q++) {
     assert.ok(quartile[q] > 200, `quartile ${q} underrepresented (${quartile[q]}/5000)`);
   }
+});
+
+test('Name decode rejects a pointer cycle (no infinite loop)', function() {
+  // Hand-built packet header (12 bytes) followed by a name that points to
+  // itself: byte 12 = 0xC0 (pointer high), byte 13 = 0x0C (offset = 12).
+  // Without cycle detection this would loop forever.
+  const buf = Buffer.alloc(14);
+  buf[12] = 0xC0;
+  buf[13] = 0x0C;
+  const reader = new Packet.Reader(buf);
+  reader.offset = 8 * 12;
+  assert.throws(() => Packet.Name.decode(reader), /pointer cycle/);
+});
+
+test('Name decode rejects a two-step pointer cycle', function() {
+  // Two pointers pointing at each other: bytes 12-13 = C0 0E, bytes 14-15 = C0 0C.
+  const buf = Buffer.alloc(16);
+  buf[12] = 0xC0; buf[13] = 0x0E;
+  buf[14] = 0xC0; buf[15] = 0x0C;
+  const reader = new Packet.Reader(buf);
+  reader.offset = 8 * 12;
+  assert.throws(() => Packet.Name.decode(reader), /pointer cycle/);
+});
+
+test('Header default constructor initializes ancount/ad/cd', function() {
+  const header = new Packet.Header();
+  assert.equal(header.ancount, 0);
+  assert.equal(header.ad, 0);
+  assert.equal(header.cd, 0);
+});
+
+test('Header#parse exposes AD and CD bits (RFC 4035)', function() {
+  // Second header word with AD=1, CD=1, all other flags zero.
+  // Layout: qr(1) opcode(4) aa(1) tc(1) rd(1) ra(1) z(1) ad(1) cd(1) rcode(4)
+  // bits  : 0  0000 0  0  0  0  0  1  1  0000  => 0000 0000 0011 0000 = 0x0030
+  const buf = Buffer.from([
+    0x00, 0x01, // id
+    0x00, 0x30, // flags: AD=1, CD=1
+    0x00, 0x00, 0x00, 0x00, // counts
+    0x00, 0x00, 0x00, 0x00,
+  ]);
+  const header = Packet.Header.parse(buf);
+  assert.equal(header.z, 0);
+  assert.equal(header.ad, 1);
+  assert.equal(header.cd, 1);
+});
+
+test('Header#toBuffer round-trips AD and CD bits', function() {
+  const header = new Packet.Header({ id: 0x4242, ad: 1, cd: 1 });
+  const parsed = Packet.Header.parse(header.toBuffer());
+  assert.equal(parsed.id, 0x4242);
+  assert.equal(parsed.ad, 1);
+  assert.equal(parsed.cd, 1);
+  assert.equal(parsed.z, 0);
+});
+
+test('EDNS exposes extendedRcode / version / doFlag', function() {
+  const opt = new Packet.Resource.EDNS([], { extendedRcode: 16, version: 0, doFlag: true });
+  assert.equal(opt.extendedRcode, 16);
+  assert.equal(opt.version, 0);
+  assert.equal(opt.doFlag, true);
+  // ttl wire encoding: ext rcode in top byte, DO at bit 15 of low half.
+  assert.equal(opt.ttl, (16 << 24) | 0x8000);
+});
+
+test('EDNS round-trip preserves DO bit and extended RCODE', function() {
+  const opt = new Packet.Resource.EDNS([], { extendedRcode: 23, version: 0, doFlag: true });
+  const parsed = Packet.Resource.decode(Packet.Resource.encode(opt));
+  assert.equal(parsed.extendedRcode, 23);
+  assert.equal(parsed.doFlag, true);
+});
+
+test('EDNS udpPayloadSize is configurable (RFC 6891 §6.2.3)', function() {
+  const opt = new Packet.Resource.EDNS([], { udpPayloadSize: 4096 });
+  assert.equal(opt.class, 4096);
+  const parsed = Packet.Resource.decode(Packet.Resource.encode(opt));
+  assert.equal(parsed.class, 4096);
+});
+
+test('EDNS.ECS#encode truncates IPv4 address to prefix length (RFC 7871)', function() {
+  // /8 → 1 octet, /17 → 3 octets (ceil)
+  for (const [ cidr, expectedOctets ] of [
+    [ '10.0.0.0/8', 1 ],
+    [ '10.20.0.0/16', 2 ],
+    [ '10.20.30.0/24', 3 ],
+    [ '10.20.30.0/17', 3 ],
+    [ '10.20.30.40/32', 4 ],
+  ]) {
+    const query = new Packet.Resource.EDNS([ new Packet.Resource.EDNS.ECS(cidr) ]);
+    const buf = Packet.Resource.encode(query);
+    // Layout: name(1) type(2) class(2) ttl(4) rdlength(2) optionCode(2)
+    // optionLength(2) → optionLength sits at offset 13. Address byte count =
+    // optionLength - 4 (family + src prefix + scope prefix headers).
+    const optionLength = buf.readUInt16BE(13);
+    assert.equal(optionLength - 4, expectedOctets, `cidr ${cidr}`);
+  }
+});
+
+test('EDNS.ECS#encode supports IPv6 family', function() {
+  // family=2 (IPv6), /32 prefix → 4 leading octets of the address.
+  const ecs = Packet.Resource.EDNS.ECS('2001:db8::/32');
+  ecs.family = 2; // factory currently hard-codes family 1; opt into IPv6
+  const opt = new Packet.Resource.EDNS([ ecs ]);
+  const buf = Packet.Resource.encode(opt);
+  const parsed = Packet.Resource.decode(buf);
+  assert.equal(parsed.rdata[0].family, 2);
+  assert.equal(parsed.rdata[0].sourcePrefixLength, 32);
+  // The decoder pads truncated IPv6 to 8 segments; '2001:db8' followed by 6 zero segments.
+  assert.equal(parsed.rdata[0].ip, '2001:db8:0:0:0:0:0:0');
 });
 
 test('Packet.parse tolerates multiple questions', function() {

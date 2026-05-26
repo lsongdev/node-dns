@@ -4,6 +4,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Unreleased
 
+- fix(packet): Name decode rejects pointer cycles (RFC 1035)
+- fix(packet): EDNS exposes extendedRcode/version/doFlag; udpPayloadSize configurable (RFC 6891)
+- fix(packet): Header initializes ancount; AD/CD bits split from Z (RFC 4035)
+- fix(packet): ECS encoder truncates address to ceil(prefix/8) octets, adds IPv6 family (RFC 7871)
+- feat(server): PROXY protocol v1/v2 support #122
+
 ### 2.2.1 - 2026-05-25
 
 - fix(packet): use crypto.randomInt for Packet.uuid (RFC 5452)
