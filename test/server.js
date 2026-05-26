@@ -273,6 +273,61 @@ test('server/tcp#standalone end-to-end query', async() => {
   await new Promise(resolve => server.close(resolve));
 });
 
+test('server/tcp#async handler still responds when client sends socket.end(frame)', async() => {
+  // Regression: a client that bundles query + FIN in a single socket.end()
+  // would trigger 'end' on the server before an async handler had a chance
+  // to call send(). The server must not half-close its write side while any
+  // response is still in flight.
+  const server = createTCPServer();
+  server.on('request', (request, send) => {
+    setTimeout(() => {
+      const response = Packet.createResponseFromRequest(request);
+      response.answers.push({
+        name    : request.questions[0].name,
+        type    : Packet.TYPE.A,
+        class   : Packet.CLASS.IN,
+        ttl     : 60,
+        address : '203.0.113.99',
+      });
+      send(response);
+    }, 25);
+  });
+  await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
+  const { port } = server.address();
+
+  const query = new Packet();
+  query.header.id = 0x9001;
+  query.header.rd = 1;
+  query.questions.push({ name: 'end-with-frame.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  const body = query.toBuffer();
+  const len = Buffer.alloc(2);
+  len.writeUInt16BE(body.length);
+
+  const reply = await new Promise((resolve, reject) => {
+    const sock = tcp.connect(port, '127.0.0.1', () => {
+      // socket.end(frame) sends both the query data and FIN. The server's
+      // 'end' event will fire before the async handler calls send().
+      sock.end(Buffer.concat([ len, body ]));
+    });
+    let buffered = Buffer.alloc(0);
+    sock.on('data', chunk => {
+      buffered = Buffer.concat([ buffered, chunk ]);
+      if (buffered.length < 2) return;
+      const replyLen = buffered.readUInt16BE(0);
+      if (buffered.length < 2 + replyLen) return;
+      resolve(Packet.parse(buffered.slice(2, 2 + replyLen)));
+    });
+    sock.on('error', reject);
+    sock.on('close', () => {
+      if (buffered.length === 0) reject(new Error('connection closed before any response'));
+    });
+  });
+
+  assert.equal(reply.header.id, 0x9001);
+  assert.equal(reply.answers[0].address, '203.0.113.99');
+  await new Promise(resolve => server.close(resolve));
+});
+
 test('server/tcp#pipelined queries share a connection (RFC 7766 §6.2.1.1)', async() => {
   const server = createTCPServer();
   server.on('request', (request, send) => {
@@ -553,6 +608,61 @@ test('server/doh#POST 415 on missing or wrong Content-Type (RFC 8484 §4.1)', as
   assert.equal(await sendPost('application/json'), 415, 'wrong Content-Type');
   // Sanity: with the correct Content-Type a malformed body still surfaces as
   // a server-side parse error (the connection is destroyed), not 415.
+  server.close();
+});
+
+test('server/doh#406 when Accept lists application/dns-message with q=0', async() => {
+  // Per RFC 7231 §5.3.1 q=0 means "not acceptable". An entry like
+  // application/dns-message;q=0 is an explicit rejection, even though the
+  // media range matches.
+  const server = createDOHServer();
+  const { port } = await new Promise(resolve => {
+    server.on('listening', resolve);
+    server.listen();
+  });
+  const status = await new Promise((resolve, reject) => {
+    http.get({
+      host    : '127.0.0.1',
+      port,
+      path    : '/dns-query?dns=abc',
+      headers : { accept: 'application/dns-message;q=0, text/html' },
+    }, res => resolve(res.statusCode)).on('error', reject);
+  });
+  assert.equal(status, 406);
+  server.close();
+});
+
+test('server/doh#Cache-Control ignores OPT pseudo-RR TTL (RFC 6891)', async() => {
+  // The OPT record's "TTL" field carries flags/extended RCODE; it is almost
+  // always 0 and must not drive the min TTL down to zero on cacheable
+  // responses.
+  const server = createDOHServer();
+  server.on('request', (request, send) => {
+    const response = Packet.createResponseFromRequest(request);
+    response.answers.push({
+      name    : request.questions[0].name,
+      type    : Packet.TYPE.A,
+      class   : Packet.CLASS.IN,
+      ttl     : 120,
+      address : '203.0.113.20',
+    });
+    // OPT in additionals with the conventional TTL=0. Without the fix, the
+    // Cache-Control max-age would collapse to 0.
+    response.additionals.push(Packet.Resource.EDNS([]));
+    send(response);
+  });
+  const { port } = await new Promise(resolve => {
+    server.on('listening', resolve);
+    server.listen();
+  });
+  const packet = new Packet();
+  packet.header.rd = 1;
+  packet.questions.push({ name: 'opt-ttl.test', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  const dns = packet.toBase64URL();
+  const { headers } = await get(`http://127.0.0.1:${port}/dns-query?dns=${dns}`, {
+    headers: { accept: 'application/dns-message' },
+  });
+  assert.equal(headers['cache-control'], 'max-age=120');
   server.close();
 });
 
