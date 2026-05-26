@@ -158,7 +158,8 @@ function readPipelinedMessages(socket, state, onMessage, onError) {
 
 // Read and consume the PROXY header from the front of the socket's stream.
 // Any bytes that arrive past the header are unshifted back into the socket
-// so the next reader (Packet.readStream) sees them.
+// so the pipelined message reader (readPipelinedMessages) sees them in its
+// initial drain.
 function consumeProxyHeader(socket) {
   return new Promise((resolve, reject) => {
     const chunks = [];
