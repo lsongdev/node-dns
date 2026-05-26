@@ -4,10 +4,10 @@ on:
   push:
     branches: [master, main]
     paths:
-      - 'ts/index.d.ts'
+      - 'ts/**'
       - 'index.js'
-      - 'ts/typings-check.ts'
-      - 'ts/tsconfig.json'
+      - 'index.mjs'
+      - 'package.json'
       - '.github/workflows/types.yml'
   pull_request:
     types: [opened, synchronize, reopened]
@@ -25,5 +25,7 @@ jobs:
           node-version: 24
       - name: Install type-check dependencies
         run: npm install --no-save typescript @types/node
-      - name: Check index.d.ts
+      - name: Check CJS types (index.d.ts via require)
         run: npx tsc --project ts/tsconfig.json
+      - name: Check ESM types (index.d.mts via import)
+        run: npx tsc --project ts/tsconfig.mjs.json

@@ -4,13 +4,28 @@
   "description": "A DNS Server and Client Implementation in Pure JavaScript with no dependencies.",
   "main": "index.js",
   "types": "ts/index.d.ts",
+  "exports": {
+    ".": {
+      "import": {
+        "types": "./ts/index.d.mts",
+        "default": "./index.mjs"
+      },
+      "require": {
+        "types": "./ts/index.d.ts",
+        "default": "./index.js"
+      }
+    },
+    "./package.json": "./package.json"
+  },
   "files": [
     "lib",
     "client",
     "server",
     "packet.js",
     "example",
-    "ts"
+    "index.mjs",
+    "ts/index.d.ts",
+    "ts/index.d.mts"
   ],
   "scripts": {
     "lint": "npx eslint .",
@@ -19,6 +34,7 @@
     "prettier:fix": "npx prettier . --write --log-level=warn",
     "test": "node --test",
     "test:coverage": "node --test --experimental-test-coverage",
+    "typecheck": "npx --package=typescript --package=@types/node -- tsc -p ts/tsconfig.json && npx --package=typescript --package=@types/node -- tsc -p ts/tsconfig.mjs.json",
     "test:coverage:lcov": "mkdir -p coverage && node --test --experimental-test-coverage --test-reporter=lcov --test-reporter-destination=coverage/lcov.info",
     "example-server-udp": "node example/server/udp.js",
     "example-server-tcp": "node example/server/tcp.js",

@@ -4,6 +4,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Unreleased
 
+- feat(ESM): dual published with ESM support
 - feat(packet): encode name compression pointers (RFC 1035 §4.1.4)
 - feat(server/udp): negotiated UDP payload size with TC=1 on oversize
 - feat(server/tcp): pipeline support (RFC 7766 §6.2.1.1)
@@ -15,6 +16,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - fix(server/doh): DoH POST requires Content-Type: application/dns-message
 - feat(server/doh): DoH responses include TTL-derived Cache-Control
 - fix(packet): Packet.Header.toBuffer writes Z=0 (RFC 1035 §4.1.1)
+- style(prettier): update to prettier #129
 
 ### [2.3.0] - 2026-05-25
 
