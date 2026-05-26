@@ -29,23 +29,52 @@ const readStream = stream => new Promise((resolve, reject) => {
 
 // RFC 8484 §4.1 — accept the request unless the client explicitly asked for
 // media types that exclude application/dns-message.
+//
+// Per RFC 7231 §5.3.1 a q parameter of 0 means "not acceptable", so an entry
+// like "application/dns-message;q=0" is an explicit rejection even though
+// the media range matches. Parse q and treat q=0 as absent for matching;
+// only if no surviving entry matches do we reject the request.
+const parseAccept = accept => accept.split(',').map(entry => {
+  const parts = entry.split(';').map(s => s.trim());
+  const type = (parts.shift() || '').toLowerCase();
+  let q = 1;
+  for (const param of parts) {
+    const [ name, value ] = param.split('=').map(s => s.trim());
+    if (name && name.toLowerCase() === 'q') {
+      const parsed = parseFloat(value);
+      if (Number.isFinite(parsed)) q = parsed;
+    }
+  }
+  return { type, q };
+});
+
 const isAcceptable = accept => {
   if (!accept) return true;
-  const types = accept.split(',').map(s => s.split(';')[0].trim().toLowerCase());
-  return types.some(t =>
-    t === '*/*' || t === 'application/*' || t === 'application/dns-message',
+  return parseAccept(accept).some(({ type, q }) =>
+    q > 0 && (
+      type === '*/*' ||
+      type === 'application/*' ||
+      type === 'application/dns-message'
+    ),
   );
 };
 
 // RFC 8484 §5.1 — DoH responses SHOULD include Cache-Control: max-age=<TTL>
 // derived from the minimum TTL across all RRs the response carries. A response
 // with no RRs (NXDOMAIN, etc.) gets max-age=0.
+//
+// The OPT pseudo-RR (RFC 6891) reuses the TTL field for flags / extended
+// RCODE and is typically 0; including it would force max-age=0 on any
+// otherwise-cacheable EDNS response. Skip OPT (and any future pseudo-RR
+// whose TTL field is not a real TTL).
 const minResponseTtl = packet => {
   let min = Infinity;
   for (const section of [ packet.answers, packet.authorities, packet.additionals ]) {
     if (!section) continue;
     for (const rr of section) {
-      if (rr && typeof rr.ttl === 'number' && rr.ttl < min) min = rr.ttl;
+      if (!rr || typeof rr.ttl !== 'number') continue;
+      if (rr.type === Packet.TYPE.EDNS) continue;
+      if (rr.ttl < min) min = rr.ttl;
     }
   }
   if (!Number.isFinite(min) || min < 0) return 0;

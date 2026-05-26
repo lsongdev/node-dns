@@ -532,9 +532,11 @@ Packet.Name = {
     // Track each pointer target we follow. A crafted packet can chain
     // pointers in a cycle; without this guard, decode would loop forever.
     const visited = new Set();
-    // Cumulative wire-format octets consumed for this name (length bytes +
-    // label bytes + root terminator). RFC 1035 §2.3.4 caps this at 255.
-    let totalOctets = 0;
+    // Cumulative wire-format octets consumed for this name. RFC 1035 §2.3.4
+    // caps the total — including the trailing zero-length root label — at
+    // 255, so the running tally starts at 1 (the terminator) and adds the
+    // length byte + label bytes for each non-root label.
+    let totalOctets = 1;
     while (len) {
       if ((len & Packet.Name.COPY) === Packet.Name.COPY) {
         len -= Packet.Name.COPY;

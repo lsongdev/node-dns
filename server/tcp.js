@@ -9,7 +9,11 @@ const DEFAULT_IDLE_TIMEOUT_MS = 10000;
 
 class Server extends tcp.Server {
   constructor(options) {
-    super();
+    // allowHalfOpen keeps our write side open after the peer half-closes —
+    // required so that a client which sent its query via socket.end(frame)
+    // still receives the response. Without it Node auto-ends our writable
+    // side as soon as 'end' fires, dropping pending responses.
+    super({ allowHalfOpen: true });
     let proxyProtocolEnabled = false;
     let idleTimeout = DEFAULT_IDLE_TIMEOUT_MS;
     if (typeof options === 'object' && options !== null) {
@@ -25,6 +29,12 @@ class Server extends tcp.Server {
   }
 
   async handle(client) {
+    // Per-connection bookkeeping for the pipelining state machine. Half-close
+    // from the peer ('end') is independent of how many requests are still in
+    // flight: we must not close our own write side while a handler may still
+    // call send().
+    const state = { inFlight: 0, peerEnded: false };
+    client._dnsPipeline = state;
     try {
       if (this.proxyProtocol) {
         const header = await consumeProxyHeader(client);
@@ -36,17 +46,22 @@ class Server extends tcp.Server {
       }
       // RFC 7766 §6.2.1.1 — process pipelined queries on a single connection.
       // Each message is length-prefixed (RFC 1035 §4.2.2). The connection
-      // stays open until the client sends FIN, an error occurs, or the
-      // idle timeout fires.
+      // stays open until the client sends FIN AND every outstanding response
+      // has been written, an error occurs, or the idle timeout fires.
       if (this.idleTimeout > 0) client.setTimeout(this.idleTimeout);
-      readPipelinedMessages(client, data => {
+      readPipelinedMessages(client, state, data => {
+        let message;
         try {
-          const message = Packet.parse(data);
-          this.emit('request', message, this.response.bind(this, client), client);
+          message = Packet.parse(data);
         } catch (e) {
           this.emit('requestError', e);
           client.destroy();
+          return;
         }
+        // Increment before emitting so a synchronous handler that calls
+        // send() inside the listener sees inFlight === 1 → 0, not 0 → -1.
+        state.inFlight++;
+        this.emit('request', message, this.response.bind(this, client), client);
       }, err => {
         this.emit('requestError', err);
         client.destroy();
@@ -70,14 +85,26 @@ class Server extends tcp.Server {
     if (!client.destroyed && client.writable) {
       client.write(Buffer.concat([ len, message ]));
     }
+    // Decrement in-flight and, if the peer has already half-closed and this
+    // was the last outstanding response, half-close our side too. Without
+    // this guard, a client that sent its query via socket.end(frame) would
+    // see us close before its handler runs.
+    const state = client._dnsPipeline;
+    if (state) {
+      if (state.inFlight > 0) state.inFlight--;
+      if (state.peerEnded && state.inFlight === 0 && !client.destroyed) {
+        client.end();
+      }
+    }
   }
 }
 
 // Drive a single TCP connection: read each length-prefixed DNS message in
 // turn and invoke onMessage(buffer) for each. End cleanly when the client
-// half-closes; surface protocol errors through onError. Connection lifetime
-// is managed by the caller (idleTimeout, etc.).
-function readPipelinedMessages(socket, onMessage, onError) {
+// half-closes AND there are no outstanding responses; surface protocol
+// errors through onError. Connection lifetime is managed by the caller
+// (idleTimeout, etc.).
+function readPipelinedMessages(socket, state, onMessage, onError) {
   let buffered = Buffer.alloc(0);
   let expected = null;
 
@@ -112,7 +139,11 @@ function readPipelinedMessages(socket, onMessage, onError) {
       onError(new Error('TCP message truncated: connection closed mid-message'));
       return;
     }
-    if (!socket.destroyed) socket.end();
+    state.peerEnded = true;
+    // Hold our write side open until every outstanding response has been
+    // written. Closing now would drop responses for queries the client sent
+    // via socket.end(frame), where 'end' may fire before the handler runs.
+    if (state.inFlight === 0 && !socket.destroyed) socket.end();
   });
   socket.on('timeout', () => {
     // RFC 7766 §6.2.3 — close the idle connection so resources are not
