@@ -27,6 +27,31 @@ const readStream = stream => new Promise((resolve, reject) => {
     .on('end', () => resolve(Buffer.concat(chunks)));
 });
 
+// RFC 8484 §4.1 — accept the request unless the client explicitly asked for
+// media types that exclude application/dns-message.
+const isAcceptable = accept => {
+  if (!accept) return true;
+  const types = accept.split(',').map(s => s.split(';')[0].trim().toLowerCase());
+  return types.some(t =>
+    t === '*/*' || t === 'application/*' || t === 'application/dns-message',
+  );
+};
+
+// RFC 8484 §5.1 — DoH responses SHOULD include Cache-Control: max-age=<TTL>
+// derived from the minimum TTL across all RRs the response carries. A response
+// with no RRs (NXDOMAIN, etc.) gets max-age=0.
+const minResponseTtl = packet => {
+  let min = Infinity;
+  for (const section of [ packet.answers, packet.authorities, packet.additionals ]) {
+    if (!section) continue;
+    for (const rr of section) {
+      if (rr && typeof rr.ttl === 'number' && rr.ttl < min) min = rr.ttl;
+    }
+  }
+  if (!Number.isFinite(min) || min < 0) return 0;
+  return Math.min(min >>> 0, 0x7FFFFFFF);
+};
+
 class Server extends EventEmitter {
   constructor(options) {
     super();
@@ -73,11 +98,15 @@ class Server extends EventEmitter {
         res.end();
         return;
       }
-      // Make sure the requestee is requesting the correct content type
-      const contentType = headers.accept;
-      if (contentType !== 'application/dns-message') {
-        res.writeHead(400, { 'Content-Type': 'text/plain' });
-        res.write('400 Bad Request: Illegal content type\n');
+      // RFC 8484 §4.1: clients SHOULD send Accept: application/dns-message but
+      // are not required to, and the server is not required to reject other
+      // values. Only reject when the client sent a specific, incompatible
+      // Accept that excludes application/dns-message; treat missing, "*/*",
+      // and "application/*" as acceptable. The server always replies with
+      // application/dns-message regardless.
+      if (!isAcceptable(headers.accept)) {
+        res.writeHead(406, { 'Content-Type': 'text/plain' });
+        res.write('406 Not Acceptable: application/dns-message required\n');
         res.end();
         return;
       }
@@ -102,6 +131,15 @@ class Server extends EventEmitter {
         // Decode Base64 to buffer
         queryData = Buffer.from(base64, 'base64');
       } else if (method === 'POST') {
+        // RFC 8484 §4.1: POST request bodies have Content-Type:
+        // application/dns-message. Anything else is unsupported.
+        const ct = (headers['content-type'] || '').split(';')[0].trim().toLowerCase();
+        if (ct !== 'application/dns-message') {
+          res.writeHead(415, { 'Content-Type': 'text/plain' });
+          res.write('415 Unsupported Media Type: expected application/dns-message\n');
+          res.end();
+          return;
+        }
         queryData = await readStream(client);
       }
       // Parse DNS query and Raise event.
@@ -121,6 +159,9 @@ class Server extends EventEmitter {
   response(res, message) {
     debug('response');
     res.setHeader('Content-Type', 'application/dns-message');
+    // RFC 8484 §5.1 — Cache-Control derived from the minimum RR TTL so HTTP
+    // intermediaries expire the cached response when the DNS data does.
+    res.setHeader('Cache-Control', `max-age=${minResponseTtl(message)}`);
     res.writeHead(200);
     res.end(message.toBuffer());
   }

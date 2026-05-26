@@ -245,9 +245,10 @@ test('EDNS.ECS#encode', function() {
 
   // RFC 7871 §6: ADDRESS field is only ceil(sourcePrefixLength/8) octets,
   // so /24 writes 3 address bytes (10.11.12), not 4.
+  // class=0x1000=4096 is the RFC 6891 §6.2.5 default UDP payload size.
   const b = Packet.Resource.encode(query);
   assert.deepEqual(b, Buffer.from([
-    0x00, 0x00, 0x29, 0x02, 0x00, 0x00, 0x00, 0x00,
+    0x00, 0x00, 0x29, 0x10, 0x00, 0x00, 0x00, 0x00,
     0x00, 0x00, 0x0b, 0x00, 0x08, 0x00, 0x07, 0x00,
     0x01, 0x18, 0x00, 0x0a, 0x0b, 0x0c ]));
 });
@@ -455,6 +456,8 @@ test('Resource#DNSKEY round-trip preserves keyTag and flags', function() {
 
 test('Resource#CAA encode produces correct wire bytes', function() {
   // CAA only has an encoder in this library; verify the rdata layout directly.
+  // RDLENGTH is owned by Packet.Resource.encode now (so it can back-fill the
+  // value after compression), and is not emitted by per-type encoders.
   const writer = new Packet.Writer();
   Packet.Resource.CAA.encode({
     flags : 0,
@@ -462,13 +465,11 @@ test('Resource#CAA encode produces correct wire bytes', function() {
     value : 'letsencrypt.org',
   }, writer);
   const buffer = writer.toBuffer();
-  // Layout: [ rdlength_hi, rdlength_lo, flags, tagLen, tag..., value... ]
-  const rdlength = buffer.readUInt16BE(0);
-  assert.equal(rdlength, 2 + 'issue'.length + 'letsencrypt.org'.length);
-  assert.equal(buffer[2], 0); // flags
-  assert.equal(buffer[3], 'issue'.length); // tag length
-  assert.equal(buffer.slice(4, 4 + 5).toString(), 'issue');
-  assert.equal(buffer.slice(4 + 5).toString(), 'letsencrypt.org');
+  // Layout (rdata only): [ flags, tagLen, tag..., value... ]
+  assert.equal(buffer[0], 0); // flags
+  assert.equal(buffer[1], 'issue'.length); // tag length
+  assert.equal(buffer.slice(2, 2 + 5).toString(), 'issue');
+  assert.equal(buffer.slice(2 + 5).toString(), 'letsencrypt.org');
 });
 
 test('EDNS.ECS#decode family=2 (IPv6)', function() {
@@ -903,6 +904,155 @@ test('EDNS.ECS#encode supports IPv6 family', function() {
   assert.equal(parsed.rdata[0].sourcePrefixLength, 32);
   // The decoder pads truncated IPv6 to 8 segments; '2001:db8' followed by 6 zero segments.
   assert.equal(parsed.rdata[0].ip, '2001:db8:0:0:0:0:0:0');
+});
+
+test('Packet#encode compresses repeated names (RFC 1035 §4.1.4)', function() {
+  // Same name in the question and answer should be encoded as a 2-byte
+  // pointer (0xC0 0x0C → offset 12, immediately after the header). Without
+  // compression the answer name alone would take 1 + 7 + 1 + 7 + 1 + 3 + 1
+  // = 21 bytes; with compression it's 2.
+  const pkt = new Packet();
+  pkt.header.id = 1;
+  pkt.header.qr = 1;
+  pkt.questions.push({ name: 'example.com', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  pkt.answers.push({
+    name    : 'example.com',
+    type    : Packet.TYPE.A,
+    class   : Packet.CLASS.IN,
+    ttl     : 60,
+    address : '192.0.2.1',
+  });
+  const buf = pkt.toBuffer();
+  // Question name 'example.com' starts at byte 12. The answer name should be
+  // exactly 2 bytes: 0xC0 0x0C.
+  const headerLen = 12;
+  const questionNameLen = 1 + 7 + 1 + 3 + 1; // 'example' label + 'com' label + root
+  const ansNameStart = headerLen + questionNameLen + 4; // + qtype + qclass
+  assert.equal(buf[ansNameStart], 0xC0, 'answer name should start with pointer high byte');
+  assert.equal(buf[ansNameStart + 1], 0x0C, 'pointer should target byte 12');
+  // Round-trip back to verify the pointer resolves to the original name.
+  const parsed = Packet.parse(buf);
+  assert.equal(parsed.questions[0].name, 'example.com');
+  assert.equal(parsed.answers[0].name, 'example.com');
+});
+
+test('Packet#encode compresses common suffixes (RFC 1035 §4.1.4)', function() {
+  // a.example.com and b.example.com share the 'example.com' suffix; the
+  // second name should be 'b' label + pointer to 'example.com'.
+  const pkt = new Packet();
+  pkt.header.id = 2;
+  pkt.header.qr = 1;
+  pkt.questions.push({ name: 'a.example.com', type: Packet.TYPE.A, class: Packet.CLASS.IN });
+  pkt.answers.push({
+    name    : 'b.example.com',
+    type    : Packet.TYPE.A,
+    class   : Packet.CLASS.IN,
+    ttl     : 60,
+    address : '192.0.2.2',
+  });
+  const buf = pkt.toBuffer();
+  // Without compression the answer name uses 15 bytes; with shared-suffix
+  // compression it uses 4: [1, 'b', pointer_hi, pointer_lo].
+  const parsed = Packet.parse(buf);
+  assert.equal(parsed.questions[0].name, 'a.example.com');
+  assert.equal(parsed.answers[0].name, 'b.example.com');
+  // Find the answer name in the wire format and verify its length.
+  const headerLen = 12;
+  const questionNameLen = 1 + 1 + 1 + 7 + 1 + 3 + 1; // 'a' . 'example' . 'com' . root
+  const ansNameStart = headerLen + questionNameLen + 4;
+  assert.equal(buf[ansNameStart], 1, "first byte is label length for 'b'");
+  assert.equal(buf[ansNameStart + 1], 0x62, "second byte is 'b'");
+  assert.equal(buf[ansNameStart + 2] & 0xC0, 0xC0, 'third byte starts a compression pointer');
+});
+
+test('Packet#encode compresses names inside rdata (CNAME)', function() {
+  // The CNAME's target is example.com — same as the question name, so the
+  // rdata should be just a 2-byte pointer.
+  const pkt = new Packet();
+  pkt.header.id = 3;
+  pkt.header.qr = 1;
+  pkt.questions.push({ name: 'alias.example.com', type: Packet.TYPE.CNAME, class: Packet.CLASS.IN });
+  pkt.answers.push({
+    name   : 'alias.example.com',
+    type   : Packet.TYPE.CNAME,
+    class  : Packet.CLASS.IN,
+    ttl    : 60,
+    domain : 'example.com',
+  });
+  const buf = pkt.toBuffer();
+  const parsed = Packet.parse(buf);
+  assert.equal(parsed.answers[0].domain, 'example.com');
+  // The CNAME rdata should be exactly 2 bytes (compression pointer). Find it
+  // by walking past header(12) + question(19+4) + ans_name(2) + type(2) +
+  // class(2) + ttl(4) + rdlength(2).
+  const rdlengthAt = 12 + (1 + 5 + 1 + 7 + 1 + 3 + 1) + 4 + 2 + 2 + 2 + 4;
+  const rdlength = buf.readUInt16BE(rdlengthAt);
+  assert.equal(rdlength, 2, 'CNAME pointing to existing name should compress to 2 bytes');
+});
+
+test('Packet#encode rejects oversized labels (RFC 1035 §2.3.4)', function() {
+  const pkt = new Packet();
+  pkt.questions.push({
+    name  : 'x'.repeat(64) + '.example.com',
+    type  : Packet.TYPE.A,
+    class : Packet.CLASS.IN,
+  });
+  assert.throws(() => pkt.toBuffer(), /label/);
+});
+
+test('Packet#encode rejects oversized names (RFC 1035 §2.3.4)', function() {
+  // 6 labels of 41 chars + 5 dots + root = 41*6 + 6 length bytes + 1 root = 253?
+  // Build a name guaranteed to exceed 255 octets: 4 labels of 63 + dots.
+  const labels = [ 'a'.repeat(63), 'b'.repeat(63), 'c'.repeat(63), 'd'.repeat(63) ];
+  const pkt = new Packet();
+  pkt.questions.push({
+    name  : labels.join('.'),
+    type  : Packet.TYPE.A,
+    class : Packet.CLASS.IN,
+  });
+  assert.throws(() => pkt.toBuffer(), /name/);
+});
+
+test('Name#decode rejects an oversized label byte', function() {
+  // Length byte 64 (0x40) has the second-highest bit set and is reserved.
+  const buf = Buffer.from([ 0x40, 0x61, 0x00 ]);
+  const reader = new Packet.Reader(buf);
+  assert.throws(() => Packet.Name.decode(reader), /invalid label length/);
+});
+
+test('Resource#decode clamps TTL with the sign bit set (RFC 2181 §8)', function() {
+  // Hand-build a minimal packet: header + 0 questions + 1 answer with TTL =
+  // 0xFFFFFFFF and 4-byte A rdata.
+  const pkt = Buffer.from([
+    0x00, 0x01, 0x00, 0x00, // id, flags
+    0x00, 0x00, 0x00, 0x01, // qdcount, ancount
+    0x00, 0x00, 0x00, 0x00, // nscount, arcount
+    // answer
+    0x03, 0x66, 0x6f, 0x6f, 0x00, // name "foo"
+    0x00, 0x01, // type A
+    0x00, 0x01, // class IN
+    0xFF, 0xFF, 0xFF, 0xFF, // TTL = 2^32 - 1 (high bit set)
+    0x00, 0x04, // rdlength
+    0xC0, 0x00, 0x02, 0x01, // 192.0.2.1
+  ]);
+  const parsed = Packet.parse(pkt);
+  assert.equal(parsed.answers[0].ttl, 0x7FFFFFFF, 'high-bit TTL must be clamped to 2^31 - 1');
+});
+
+test('Packet#encode merges extended RCODE into OPT (RFC 6891 §6.1.3)', function() {
+  // header.rcode = 16 (BADVERS) should propagate the high byte into the OPT
+  // record's TTL and only the low nibble (0) into the header.
+  const pkt = new Packet();
+  pkt.header.id = 0xAAAA;
+  pkt.header.qr = 1;
+  pkt.header.rcode = 16;
+  pkt.additionals.push(Packet.Resource.EDNS([]));
+  const buf = pkt.toBuffer();
+  // Header byte 3 holds Z|AD|CD|RCODE(low4). For rcode=16 → low nibble is 0.
+  assert.equal(buf[3] & 0x0F, 0);
+  // Parse it back: the merge should restore rcode=16.
+  const parsed = Packet.parse(buf);
+  assert.equal(parsed.header.rcode, 16);
 });
 
 test('Packet.parse tolerates multiple questions', function() {

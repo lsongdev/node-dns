@@ -201,6 +201,13 @@ Packet.parse = function(buffer) {
       }
     }
   });
+  // RFC 6891 §6.1.3: when an OPT record is present the wire RCODE is 12 bits:
+  // the 4 low bits come from the header, the 8 high bits come from the OPT
+  // record's TTL high byte. Merge them so callers see the full 12-bit value.
+  const opt = packet.additionals.find(r => r && r.type === Packet.TYPE.EDNS);
+  if (opt && opt.extendedRcode) {
+    packet.header.rcode = (opt.extendedRcode << 4) | (packet.header.rcode & 0xF);
+  }
   return packet;
 };
 
@@ -224,11 +231,29 @@ Object.defineProperty(Packet.prototype, 'recursive', {
  */
 Packet.prototype.toBuffer = function(writer) {
   writer = writer || new Packet.Writer();
+  // RFC 1035 §4.1.4 — record the byte offset of each name we encode so later
+  // occurrences can be replaced by a compression pointer. The map is owned by
+  // the top-level message writer; rdata encoders that recursively encode
+  // names participate automatically.
+  if (!writer.names) writer.names = new Map();
   this.header.qdcount = this.questions.length;
   this.header.ancount = this.answers.length;
   this.header.nscount = this.authorities.length;
   this.header.arcount = this.additionals.length;
   if (!(this instanceof Packet.Header)) { this.header = new Packet.Header(this.header); }
+  // RFC 6891 §6.1.3: if the caller set a header.rcode >= 16 the high byte must
+  // be carried in the OPT record's TTL. Propagate it before the header is
+  // serialized so the low nibble alone goes into the header.
+  if (this.header.rcode > 0xF) {
+    const opt = this.additionals.find(r => r && r.type === Packet.TYPE.EDNS);
+    if (opt) {
+      opt.extendedRcode = (this.header.rcode >>> 4) & 0xFF;
+      opt.ttl = ednsTtl(opt.extendedRcode, opt.version || 0, opt.doFlag);
+    } else {
+      debug('node-dns > rcode %d > 15 but no OPT record; truncating to low nibble',
+        this.header.rcode);
+    }
+  }
   this.header.toBuffer(writer);
   ([ // section          encoder
     [ 'questions', Packet.Question ],
@@ -314,10 +339,12 @@ Packet.Header.prototype.toBuffer = function(writer) {
   writer.write(this.tc, 1);
   writer.write(this.rd, 1);
   writer.write(this.ra, 1);
-  writer.write(this.z, 1);
+  // RFC 1035 §4.1.1: the Z bit is reserved and must be zero in outgoing
+  // messages, regardless of what was preserved from any inbound packet.
+  writer.write(0, 1);
   writer.write(this.ad, 1);
   writer.write(this.cd, 1);
-  writer.write(this.rcode, 4);
+  writer.write(this.rcode & 0xF, 4);
   writer.write(this.qdcount, 16);
   writer.write(this.ancount, 16);
   writer.write(this.nscount, 16);
@@ -423,23 +450,34 @@ Packet.Resource.encode = function(resource, writer) {
   Packet.Name.encode(resource.name, writer);
   writer.write(resource.type, 16);
   writer.write(resource.class, 16);
-  writer.write(resource.ttl, 32);
+  // RFC 2181 §8: TTL is an unsigned 32-bit value but high-bit values are
+  // historically unsafe; clamp to 2^31 - 1 on the wire.
+  writer.write(Math.min(resource.ttl >>> 0, 0x7FFFFFFF), 32);
   const encoder = Object.keys(Packet.TYPE).filter(function(type) {
     return resource.type === Packet.TYPE[type];
   })[0];
+  // RDLENGTH is owned here, not by each rdata encoder. We write a 16-bit
+  // placeholder, dispatch to the rdata encoder, then back-fill the length.
+  // This is what lets rdata encoders use compression pointers without having
+  // to predict their compressed length up front.
+  const rdlenBitPos = writer.bitLength();
+  writer.write(0, 16);
+  const rdataBitStart = writer.bitLength();
   if (encoder in Packet.Resource && Packet.Resource[encoder].encode) {
-    return Packet.Resource[encoder].encode(resource, writer);
+    Packet.Resource[encoder].encode(resource, writer);
+  } else {
+    debug('node-dns > unknown encoder %s(%j)', encoder, resource.type);
+    // Fallback for unknown / decoder-only types: round-trip the raw RDATA the
+    // decoder preserved as `resource.data`. Without this, RDATA would be
+    // omitted entirely, truncating the wire format and corrupting any
+    // records that follow.
+    const data = Buffer.isBuffer(resource.data) ? resource.data : Buffer.alloc(0);
+    for (const byte of data) {
+      writer.write(byte, 8);
+    }
   }
-  debug('node-dns > unknown encoder %s(%j)', encoder, resource.type);
-  // Fallback for unknown / decoder-only types: round-trip the raw RDATA the
-  // decoder preserved as `resource.data`. Without this, RDLENGTH and RDATA
-  // would be omitted entirely, truncating the wire format and corrupting any
-  // records that follow.
-  const data = Buffer.isBuffer(resource.data) ? resource.data : Buffer.alloc(0);
-  writer.write(data.length, 16);
-  for (const byte of data) {
-    writer.write(byte, 8);
-  }
+  const rdlen = (writer.bitLength() - rdataBitStart) / 8;
+  writer.patch(rdlenBitPos, rdlen, 16);
   return writer.toBuffer();
 };
 /**
@@ -457,6 +495,10 @@ Packet.Resource.decode = function(reader) {
   resource.type = reader.read(16);
   resource.class = reader.read(16);
   resource.ttl = reader.read(32);
+  // RFC 2181 §8: TTLs are an unsigned 32-bit field but legacy implementations
+  // treated them as signed. Anything with the high bit set is clamped to
+  // 2^31 - 1 so it cannot be misinterpreted as a negative value.
+  if (resource.ttl > 0x7FFFFFFF) resource.ttl = 0x7FFFFFFF;
   let length = reader.read(16);
   const parser = Object.keys(Packet.TYPE).filter(function(type) {
     return resource.type === Packet.TYPE[type];
@@ -477,9 +519,12 @@ Packet.Resource.decode = function(reader) {
  * @param  {[type]} domain [description]
  * @return {[type]}        [description]
  */
+// RFC 1035 §2.3.4 — wire-format limits.
 Packet.Name = {
-  COPY   : 0xc0,
-  decode : function(reader) {
+  COPY      : 0xc0,
+  MAX_LABEL : 63,
+  MAX_NAME  : 255,
+  decode    : function(reader) {
     if (reader instanceof Buffer) {
       reader = new Packet.Reader(reader);
     }
@@ -487,6 +532,9 @@ Packet.Name = {
     // Track each pointer target we follow. A crafted packet can chain
     // pointers in a cycle; without this guard, decode would loop forever.
     const visited = new Set();
+    // Cumulative wire-format octets consumed for this name (length bytes +
+    // label bytes + root terminator). RFC 1035 §2.3.4 caps this at 255.
+    let totalOctets = 0;
     while (len) {
       if ((len & Packet.Name.COPY) === Packet.Name.COPY) {
         len -= Packet.Name.COPY;
@@ -500,28 +548,65 @@ Packet.Name = {
         reader.offset = pos * 8;
         len = reader.read(8);
         continue;
-      } else {
-        let part = '';
-        while (len--) part += String.fromCharCode(reader.read(8));
-        name.push(part);
-        len = reader.read(8);
       }
+      // RFC 1035: a label length byte has its top two bits clear (00).
+      // The 01/10 combinations are reserved and indicate a malformed name.
+      if (len & 0xC0) {
+        throw new Error(`Name decode: invalid label length byte 0x${len.toString(16)}`);
+      }
+      if (len > Packet.Name.MAX_LABEL) {
+        throw new Error(`Name decode: label exceeds ${Packet.Name.MAX_LABEL} octets`);
+      }
+      totalOctets += len + 1;
+      if (totalOctets > Packet.Name.MAX_NAME) {
+        throw new Error(`Name decode: name exceeds ${Packet.Name.MAX_NAME} octets`);
+      }
+      let part = '';
+      while (len--) part += String.fromCharCode(reader.read(8));
+      name.push(part);
+      len = reader.read(8);
     }
     if (o) reader.offset = o;
     return name.join('.');
   },
   encode: function(domain, writer) {
     writer = writer || new Packet.Writer();
-    // TODO: domain name compress
-    (domain || '').split('.').filter(function(part) {
-      return !!part;
-    }).forEach(function(part) {
-      writer.write(part.length, 8);
-      part.split('').map(function(c) {
-        writer.write(c.charCodeAt(0), 8);
-        return c.charCodeAt(0);
-      });
-    });
+    const parts = (domain || '').split('.').filter(part => !!part);
+    let totalOctets = 1; // root terminator
+    for (const part of parts) {
+      if (part.length > Packet.Name.MAX_LABEL) {
+        throw new Error(
+          `Name encode: label "${part}" is ${part.length} octets ` +
+          `(max ${Packet.Name.MAX_LABEL})`);
+      }
+      totalOctets += part.length + 1;
+    }
+    if (totalOctets > Packet.Name.MAX_NAME) {
+      throw new Error(
+        `Name encode: name "${domain}" encodes to ${totalOctets} octets ` +
+        `(max ${Packet.Name.MAX_NAME})`);
+    }
+    // RFC 1035 §4.1.4 — if the writer carries a name-offset table, emit a
+    // compression pointer for any suffix we've already serialized; otherwise
+    // record this suffix at its current byte offset so later names can point
+    // here. Compression pointers can address only the first 16 KiB of a
+    // message (14-bit offset); past that we fall back to literal labels.
+    const compress = writer.names instanceof Map;
+    for (let i = 0; i < parts.length; i++) {
+      const suffix = parts.slice(i).join('.').toLowerCase();
+      if (compress && writer.names.has(suffix)) {
+        writer.write(0xC000 | writer.names.get(suffix), 16);
+        return writer.toBuffer();
+      }
+      if (compress) {
+        const byteOffset = writer.byteLength();
+        if (byteOffset < 0x4000) writer.names.set(suffix, byteOffset);
+      }
+      writer.write(parts[i].length, 8);
+      for (let j = 0; j < parts[i].length; j++) {
+        writer.write(parts[i].charCodeAt(j), 8);
+      }
+    }
     writer.write(0, 8);
     return writer.toBuffer();
   },
@@ -541,9 +626,8 @@ Packet.Resource.A = function(address) {
 
 Packet.Resource.A.encode = function(record, writer) {
   writer = writer || new Packet.Writer();
-  const parts = record.address.split('.');
-  writer.write(parts.length, 16);
-  parts.forEach(function(part) {
+  // RDLENGTH is written by Packet.Resource.encode; only emit the rdata here.
+  record.address.split('.').forEach(function(part) {
     writer.write(parseInt(part, 10), 8);
   });
   return writer.toBuffer();
@@ -577,8 +661,6 @@ Packet.Resource.MX = function(exchange, priority) {
  */
 Packet.Resource.MX.encode = function(record, writer) {
   writer = writer || new Packet.Writer();
-  const len = Packet.Name.encode(record.exchange).length;
-  writer.write(len + 2, 16);
   writer.write(record.priority, 16);
   Packet.Name.encode(record.exchange, writer);
   return writer.toBuffer();
@@ -611,9 +693,7 @@ Packet.Resource.AAAA = {
   },
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
-    const parts = fromIPv6(record.address);
-    writer.write(parts.length * 2, 16);
-    parts.forEach(function(part) {
+    fromIPv6(record.address).forEach(function(part) {
       writer.write(parseInt(part, 16), 16);
     });
     return writer.toBuffer();
@@ -631,7 +711,6 @@ Packet.Resource.NS = {
   },
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
-    writer.write(Packet.Name.encode(record.ns).length, 16);
     Packet.Name.encode(record.ns, writer);
     return writer.toBuffer();
   },
@@ -649,7 +728,6 @@ Packet.Resource.CNAME = {
   },
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
-    writer.write(Packet.Name.encode(record.domain).length, 16);
     Packet.Name.encode(record.domain, writer);
     return writer.toBuffer();
   },
@@ -697,15 +775,7 @@ Packet.Resource.TXT = {
       return characterString;
     });
 
-    // calculate byte length of resource strings
-    const bufferLength = characterStringBuffers.reduce(function(sum, characterStringBuffer) {
-      return sum + characterStringBuffer.length;
-    }, 0);
-
-    // write string length to output
-    writer.write(bufferLength + characterStringBuffers.length, 16); // response length
-
-    // write each string to output
+    // write each string to output (RDLENGTH is back-filled by Resource.encode)
     characterStringBuffers.forEach(function(buffer) {
       writer.write(buffer.length, 8); // text length
       buffer.forEach(function(c) {
@@ -734,18 +804,14 @@ Packet.Resource.SOA = {
   },
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
-    let len = 0;
-    len += Packet.Name.encode(record.primary).length;
-    len += Packet.Name.encode(record.admin).length;
-    len += (32 * 5) / 8;
-    writer.write(len, 16);
     Packet.Name.encode(record.primary, writer);
     Packet.Name.encode(record.admin, writer);
     writer.write(record.serial, 32);
     writer.write(record.refresh, 32);
     writer.write(record.retry, 32);
     writer.write(record.expiration, 32);
-    writer.write(record.minimum, 32);
+    // RFC 2308 §4: the SOA minimum field is also a TTL; same 31-bit ceiling.
+    writer.write(Math.min(record.minimum >>> 0, 0x7FFFFFFF), 32);
     return writer.toBuffer();
   },
 };
@@ -764,8 +830,6 @@ Packet.Resource.SRV = {
   },
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
-    const { length } = Packet.Name.encode(record.target);
-    writer.write(length + 6, 16);
     writer.write(record.priority, 16);
     writer.write(record.weight, 16);
     writer.write(record.port, 16);
@@ -784,11 +848,16 @@ const ednsTtl = (extendedRcode, version, doFlag) =>
   | ((version & 0xff) << 16)
   | (doFlag ? 0x8000 : 0);
 
+// RFC 6891 §6.2.5 — a reasonable default for the requestor's UDP payload size.
+// The pre-EDNS 512-byte limit is conservative; modern resolvers advertise
+// 4096 so upstreams need not truncate responses that fit in a typical MTU.
+Packet.EDNS_DEFAULT_UDP_PAYLOAD_SIZE = 4096;
+
 Packet.Resource.EDNS = function(rdata, opts = {}) {
   const extendedRcode = opts.extendedRcode || 0;
   const version = opts.version || 0;
   const doFlag = !!opts.doFlag;
-  const udpPayloadSize = opts.udpPayloadSize || 512;
+  const udpPayloadSize = opts.udpPayloadSize || Packet.EDNS_DEFAULT_UDP_PAYLOAD_SIZE;
   return {
     type  : Packet.TYPE.EDNS,
     class : udpPayloadSize,
@@ -804,7 +873,7 @@ Packet.Resource.EDNS.decode = function(reader, length) {
   // When invoked through Resource.parse, this.type/class/ttl are already set
   // from the wire. Direct callers (e.g. unit tests) hit defaults instead.
   this.type = this.type ?? Packet.TYPE.EDNS;
-  this.class = this.class ?? 512;
+  this.class = this.class ?? Packet.EDNS_DEFAULT_UDP_PAYLOAD_SIZE;
   const ttl = this.ttl ?? 0;
   this.ttl = ttl;
   this.extendedRcode = (ttl >>> 24) & 0xff;
@@ -833,7 +902,9 @@ Packet.Resource.EDNS.decode = function(reader, length) {
 };
 
 Packet.Resource.EDNS.encode = function(record, writer) {
-  const rdataWriter = new Packet.Writer();
+  writer = writer || new Packet.Writer();
+  // RDLENGTH is owned by Packet.Resource.encode; emit option records back to
+  // back into the main writer.
   for (const rdata of record.rdata) {
     const encoder = Object.keys(Packet.EDNS_OPTION_CODE).filter(function(type) {
       return rdata.ednsCode === Packet.EDNS_OPTION_CODE[type];
@@ -841,16 +912,13 @@ Packet.Resource.EDNS.encode = function(record, writer) {
     if (encoder in Packet.Resource.EDNS && Packet.Resource.EDNS[encoder].encode) {
       const w = new Packet.Writer();
       Packet.Resource.EDNS[encoder].encode(rdata, w);
-      rdataWriter.write(rdata.ednsCode, 16);
-      rdataWriter.write(w.buffer.length / 8, 16);
-      rdataWriter.writeBuffer(w);
+      writer.write(rdata.ednsCode, 16);
+      writer.write(w.buffer.length / 8, 16);
+      writer.writeBuffer(w);
     } else {
       debug('node-dns > unknown EDNS rdata encoder %s(%j)', encoder, rdata.ednsCode);
     }
   }
-  writer = writer || new Packet.Writer();
-  writer.write(rdataWriter.buffer.length / 8, 16);
-  writer.writeBuffer(rdataWriter);
   return writer.toBuffer();
 };
 
@@ -946,9 +1014,8 @@ function expandIPv6ToBytes(address) {
 Packet.Resource.CAA = {
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
-
+    // RDLENGTH is written by Packet.Resource.encode.
     const buffer = Buffer.from(record.tag + record.value, 'utf8');
-    writer.write(2 + buffer.length, 16);
     writer.write(record.flags, 8);
     writer.write(record.tag.length, 8);
 
@@ -1006,8 +1073,8 @@ Packet.Resource.DNSKEY = {
   },
   encode: function(record, writer) {
     writer = writer || new Packet.Writer();
+    // RDLENGTH is written by Packet.Resource.encode.
     const buffer = Buffer.from(record.key, 'base64');
-    writer.write(4 + buffer.length, 16);
     writer.write(record.flags, 16);
     writer.write(record.protocol, 8);
     writer.write(record.algorithm, 8);
