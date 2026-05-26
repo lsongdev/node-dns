@@ -4,6 +4,8 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Unreleased
 
+### [2.3.0] - 2026-05-25
+
 - fix(packet): IPv6 `::` compression for leading-zero address #123
 - fix(packet): Name decode rejects pointer cycles (RFC 1035) #124
 - fix(packet): EDNS exposes extendedRcode/version/doFlag #124
@@ -11,12 +13,12 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - fix(packet): ECS encoder truncates address, adds IPv6 (RFC 7871) #124
 - feat(server): PROXY protocol v1/v2 support #122
 
-### 2.2.1 - 2026-05-25
+### [2.2.1] - 2026-05-25
 
 - fix(packet): use crypto.randomInt for Packet.uuid (RFC 5452)
 - fix(packet): preserve RDLENGTH+RDATA for unknown RR types
 
-### 2.2.0 - 2026-05-25
+### [2.2.0] - 2026-05-25
 
 - feat(client): add retryOverTCP option #117
 - feat(client): support `dns` argument, fix docs #116
@@ -54,3 +56,6 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 - feat(packet): `flatMap` support
 - fix(packet): ensure compressed IPv6 is valid #70
 - doc(README): correct `server.listen` options
+
+[2.2.0]: https://github.com/lsongdev/node-dns/releases/tag/v2.2.0
+[2.2.1]: https://github.com/lsongdev/node-dns/releases/tag/v2.2.1
