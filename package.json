@@ -1,6 +1,6 @@
 {
   "name": "dns2",
-  "version": "2.2.1",
+  "version": "2.3.0",
   "description": "A DNS Server and Client Implementation in Pure JavaScript with no dependencies.",
   "main": "index.js",
   "types": "ts/index.d.ts",
