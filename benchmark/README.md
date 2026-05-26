@@ -1,4 +1,4 @@
-# dns2 
+# dns2
 
 ### Performance and Benchmarking
 
@@ -47,8 +47,8 @@ unboundedly.
 
 ```js
 const server = dns2.createServer({
-  udp          : true,
-  maxConcurrent: 500,   // at most 500 handler calls in flight at once
+  udp: true,
+  maxConcurrent: 500, // at most 500 handler calls in flight at once
   handle(request, send) {
     // async work here...
   },
@@ -67,4 +67,3 @@ const server = dns2.createServer({
   `node --max-semi-space-size=64 server.js`
 - For production, consider a process manager (PM2, systemd) that auto-restarts
   on failure and enables multi-instance clustering.
-

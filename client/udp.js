@@ -22,14 +22,14 @@ module.exports = ({
       query.header.rd = 1;
     }
     if (clientIp) {
-      query.additionals.push(Packet.Resource.EDNS([
-        Packet.Resource.EDNS.ECS(clientIp),
-      ]));
+      query.additionals.push(
+        Packet.Resource.EDNS([Packet.Resource.EDNS.ECS(clientIp)]),
+      );
     }
     query.questions.push({
       name,
-      class : cls,
-      type  : Packet.TYPE[type],
+      class: cls,
+      type: Packet.TYPE[type],
     });
     const client = new udp.Socket(socketType);
     // Only enforce a strict source-address check when `dns` is an IP literal;
@@ -44,12 +44,23 @@ module.exports = ({
         if (timer) clearTimeout(timer);
         client.removeListener('message', onMessage);
         client.removeListener('error', onError);
-        try { client.close(); } catch (_) { /* already closed */ }
+        try {
+          client.close();
+        } catch (_) {
+          /* already closed */
+        }
       };
       function onMessage(message, rinfo) {
         // Drop packets that didn't come from the configured resolver.
-        if (rinfo.port !== port || (expectedAddress && rinfo.address !== expectedAddress)) {
-          debug('udp: dropping packet from unexpected sender %s:%d', rinfo.address, rinfo.port);
+        if (
+          rinfo.port !== port ||
+          (expectedAddress && rinfo.address !== expectedAddress)
+        ) {
+          debug(
+            'udp: dropping packet from unexpected sender %s:%d',
+            rinfo.address,
+            rinfo.port,
+          );
           return;
         }
         let response;
@@ -61,8 +72,11 @@ module.exports = ({
         }
         // Stray / late reply from a reused ephemeral port — keep listening.
         if (response.header.id !== query.header.id) {
-          debug('udp: dropping response with mismatched id %d (expected %d)',
-            response.header.id, query.header.id);
+          debug(
+            'udp: dropping response with mismatched id %d (expected %d)',
+            response.header.id,
+            query.header.id,
+          );
           return;
         }
         // RFC 1035 §4.2.1: if the TC (truncated) bit is set the upstream had

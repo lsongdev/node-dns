@@ -83,9 +83,9 @@ class Server extends udp.Socket {
         if (parsed.header.command === 'PROXY') {
           clientInfo = {
             ...rinfo,
-            address : parsed.header.sourceAddress,
-            port    : parsed.header.sourcePort,
-            proxy   : parsed.header,
+            address: parsed.header.sourceAddress,
+            port: parsed.header.sourcePort,
+            proxy: parsed.header,
           };
         } else {
           clientInfo = { ...rinfo, proxy: parsed.header };
@@ -93,7 +93,10 @@ class Server extends udp.Socket {
         data = data.slice(parsed.headerLength);
       }
       const message = Packet.parse(data);
-      const ctx = { rinfo: responder, maxPayload: negotiatedPayloadSize(message) };
+      const ctx = {
+        rinfo: responder,
+        maxPayload: negotiatedPayloadSize(message),
+      };
       this.emit('request', message, this.response.bind(this, ctx), clientInfo);
     } catch (e) {
       this.emit('requestError', e);
@@ -113,8 +116,7 @@ class Server extends udp.Socket {
   }
 
   listen(port, address) {
-    return new Promise(resolve =>
-      this.bind(port, address, resolve));
+    return new Promise(resolve => this.bind(port, address, resolve));
   }
 }
 

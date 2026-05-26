@@ -1,7 +1,6 @@
 const https = require('node:https');
 
-const get = url => new Promise(resolve =>
-  https.get(url, resolve));
+const get = url => new Promise(resolve => https.get(url, resolve));
 
 const readStream = stream => {
   const buffer = [];
@@ -15,11 +14,13 @@ const readStream = stream => {
   });
 };
 
-const GoogleClient = () =>
+const GoogleClient =
+  () =>
   (name, type = 'ANY') => {
-    return Promise
-      .resolve()
-      .then(() => get(`https://dns.google.com/resolve?name=${name}&type=${type}`))
+    return Promise.resolve()
+      .then(() =>
+        get(`https://dns.google.com/resolve?name=${name}&type=${type}`),
+      )
       .then(readStream)
       .then(JSON.parse);
   };

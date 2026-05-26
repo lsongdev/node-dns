@@ -4,14 +4,14 @@ const http2 = require('node:http2');
 const Packet = require('../packet');
 
 const protocols = {
-  'http:'  : http.get,
-  'https:' : https.get,
-  'h2:'    : (url, options, done) => {
+  'http:': http.get,
+  'https:': https.get,
+  'h2:': (url, options, done) => {
     const urlObj = new URL(url);
     const client = http2.connect(url.replace('h2:', 'https:'));
     const req = client.request({
-      ':path'   : `${urlObj.pathname}${urlObj.search}`,
-      ':method' : 'GET',
+      ':path': `${urlObj.pathname}${urlObj.search}`,
+      ':method': 'GET',
       ...options.headers,
     });
 
@@ -19,8 +19,8 @@ const protocols = {
       client.close();
       done({
         headers,
-        statusCode : headers[':status'],
-        on         : req.on.bind(req),
+        statusCode: headers[':status'],
+        on: req.on.bind(req),
       });
     });
 
@@ -33,45 +33,60 @@ const protocols = {
   },
 };
 
-const makeRequest = (url, query) => new Promise((resolve, reject) => {
-  const index = url.indexOf('://');
-  if (index === -1) url = `https://${url}`;
-  const u = new URL(url);
-  // The DNS query is included in a single variable named “dns” in the
-  // query component of the request URI.  The value of the “dns” variable
-  // is the content of the DNS request message, encoded with base64url
-  // [RFC4648](https://datatracker.ietf.org/doc/html/rfc8484#section-4.1).
-  const searchParams = u.searchParams;
-  searchParams.set('dns', query);
-  u.search = searchParams.toString();
-  const get = protocols[u.protocol];
-  if (!get) throw new Error(`Unsupported protocol: ${u.protocol}, must be specified (http://, https:// or h2://)`);
-  const req = get(u.toString(), { headers: { accept: 'application/dns-message' } }, resolve);
-  if (req) req.on('error', reject);
-});
+const makeRequest = (url, query) =>
+  new Promise((resolve, reject) => {
+    const index = url.indexOf('://');
+    if (index === -1) url = `https://${url}`;
+    const u = new URL(url);
+    // The DNS query is included in a single variable named “dns” in the
+    // query component of the request URI.  The value of the “dns” variable
+    // is the content of the DNS request message, encoded with base64url
+    // [RFC4648](https://datatracker.ietf.org/doc/html/rfc8484#section-4.1).
+    const searchParams = u.searchParams;
+    searchParams.set('dns', query);
+    u.search = searchParams.toString();
+    const get = protocols[u.protocol];
+    if (!get)
+      throw new Error(
+        `Unsupported protocol: ${u.protocol}, must be specified (http://, https:// or h2://)`,
+      );
+    const req = get(
+      u.toString(),
+      { headers: { accept: 'application/dns-message' } },
+      resolve,
+    );
+    if (req) req.on('error', reject);
+  });
 
-const readStream = res => new Promise((resolve, reject) => {
-  const chunks = [];
-  res
-    .on('error', reject)
-    .on('data', chunk => chunks.push(chunk))
-    .on('end', () => {
-      const data = Buffer.concat(chunks);
-      if (res.statusCode !== 200) {
-        reject(new Error(`HTTP ${res.statusCode}: ${data.toString()}`));
-      }
-      resolve(data);
-    });
-});
+const readStream = res =>
+  new Promise((resolve, reject) => {
+    const chunks = [];
+    res
+      .on('error', reject)
+      .on('data', chunk => chunks.push(chunk))
+      .on('end', () => {
+        const data = Buffer.concat(chunks);
+        if (res.statusCode !== 200) {
+          reject(new Error(`HTTP ${res.statusCode}: ${data.toString()}`));
+        }
+        resolve(data);
+      });
+  });
 
-const buildQuery = ({ name, type = 'A', cls = Packet.CLASS.IN, clientIp, recursive = true }) => {
+const buildQuery = ({
+  name,
+  type = 'A',
+  cls = Packet.CLASS.IN,
+  clientIp,
+  recursive = true,
+}) => {
   const packet = new Packet();
   packet.header.rd = recursive ? 1 : 0;
 
   if (clientIp) {
-    packet.additionals.push(Packet.Resource.EDNS([
-      Packet.Resource.EDNS.ECS(clientIp),
-    ]));
+    packet.additionals.push(
+      Packet.Resource.EDNS([Packet.Resource.EDNS.ECS(clientIp)]),
+    );
   }
 
   packet.questions.push({ name, class: cls, type: Packet.TYPE[type] });
@@ -79,7 +94,7 @@ const buildQuery = ({ name, type = 'A', cls = Packet.CLASS.IN, clientIp, recursi
 };
 
 const DOHClient = ({ dns }) => {
-  return async(name, type, cls, options = {}) => {
+  return async (name, type, cls, options = {}) => {
     const query = buildQuery({ name, type, cls, ...options });
     const response = await makeRequest(dns, query);
     const data = await readStream(response);

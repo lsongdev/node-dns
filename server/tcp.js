@@ -18,7 +18,8 @@ class Server extends tcp.Server {
     let idleTimeout = DEFAULT_IDLE_TIMEOUT_MS;
     if (typeof options === 'object' && options !== null) {
       proxyProtocolEnabled = options.proxyProtocol ?? false;
-      if (typeof options.idleTimeout === 'number') idleTimeout = options.idleTimeout;
+      if (typeof options.idleTimeout === 'number')
+        idleTimeout = options.idleTimeout;
     }
     if (typeof options === 'function') {
       this.on('request', options);
@@ -49,23 +50,33 @@ class Server extends tcp.Server {
       // stays open until the client sends FIN AND every outstanding response
       // has been written, an error occurs, or the idle timeout fires.
       if (this.idleTimeout > 0) client.setTimeout(this.idleTimeout);
-      readPipelinedMessages(client, state, data => {
-        let message;
-        try {
-          message = Packet.parse(data);
-        } catch (e) {
-          this.emit('requestError', e);
+      readPipelinedMessages(
+        client,
+        state,
+        data => {
+          let message;
+          try {
+            message = Packet.parse(data);
+          } catch (e) {
+            this.emit('requestError', e);
+            client.destroy();
+            return;
+          }
+          // Increment before emitting so a synchronous handler that calls
+          // send() inside the listener sees inFlight === 1 → 0, not 0 → -1.
+          state.inFlight++;
+          this.emit(
+            'request',
+            message,
+            this.response.bind(this, client),
+            client,
+          );
+        },
+        err => {
+          this.emit('requestError', err);
           client.destroy();
-          return;
-        }
-        // Increment before emitting so a synchronous handler that calls
-        // send() inside the listener sees inFlight === 1 → 0, not 0 → -1.
-        state.inFlight++;
-        this.emit('request', message, this.response.bind(this, client), client);
-      }, err => {
-        this.emit('requestError', err);
-        client.destroy();
-      });
+        },
+      );
     } catch (e) {
       this.emit('requestError', e);
       client.destroy();
@@ -83,7 +94,7 @@ class Server extends tcp.Server {
     const len = Buffer.alloc(2);
     len.writeUInt16BE(message.length);
     if (!client.destroyed && client.writable) {
-      client.write(Buffer.concat([ len, message ]));
+      client.write(Buffer.concat([len, message]));
     }
     // Decrement in-flight and, if the peer has already half-closed and this
     // was the last outstanding response, half-close our side too. Without
@@ -126,9 +137,14 @@ function readPipelinedMessages(socket, state, onMessage, onError) {
   const onReadable = () => {
     let chunk;
     while ((chunk = socket.read()) !== null) {
-      buffered = buffered.length === 0 ? chunk : Buffer.concat([ buffered, chunk ]);
+      buffered =
+        buffered.length === 0 ? chunk : Buffer.concat([buffered, chunk]);
     }
-    try { drain(); } catch (e) { onError(e); }
+    try {
+      drain();
+    } catch (e) {
+      onError(e);
+    }
   };
 
   socket.on('readable', onReadable);
@@ -136,7 +152,9 @@ function readPipelinedMessages(socket, state, onMessage, onError) {
     // Half-close from the peer ends the message stream. If there's a partial
     // message still in the buffer, that's a framing error.
     if (expected !== null || buffered.length > 0) {
-      onError(new Error('TCP message truncated: connection closed mid-message'));
+      onError(
+        new Error('TCP message truncated: connection closed mid-message'),
+      );
       return;
     }
     state.peerEnded = true;

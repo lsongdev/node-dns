@@ -12,13 +12,18 @@ const debug = debuglog('dns2');
 //   - a single zero group is NOT compressed
 const toIPv6 = buffer => {
   const segments = buffer.map(part => (part > 0 ? part.toString(16) : '0'));
-  let bestStart = -1; let bestLen = 0;
-  let curStart = -1; let curLen = 0;
+  let bestStart = -1;
+  let bestLen = 0;
+  let curStart = -1;
+  let curLen = 0;
   for (let i = 0; i < segments.length; i++) {
     if (segments[i] === '0') {
       if (curLen === 0) curStart = i;
       curLen++;
-      if (curLen > bestLen) { bestLen = curLen; bestStart = curStart; }
+      if (curLen > bestLen) {
+        bestLen = curLen;
+        bestStart = curStart;
+      }
     } else {
       curLen = 0;
     }
@@ -29,7 +34,7 @@ const toIPv6 = buffer => {
   return `${before}::${after}`;
 };
 
-const fromIPv6 = (address) => {
+const fromIPv6 = address => {
   const digits = address.split(':');
   // CAVEAT edge case for :: and IPs starting
   // or ending by ::
@@ -41,7 +46,7 @@ const fromIPv6 = (address) => {
   }
   // node js 10 does not support Array.prototype.flatMap
   if (!Array.prototype.flatMap) {
-    Array.prototype.flatMap = function(f, ctx) {
+    Array.prototype.flatMap = function (f, ctx) {
       return this.reduce((r, x, i, a) => r.concat(f.call(ctx, x, i, a)), []);
     };
   }
@@ -49,7 +54,7 @@ const fromIPv6 = (address) => {
   // CAVEAT we have to take into account
   // the extra space used by the empty string
   const missingFields = 8 - digits.length + 1;
-  return digits.flatMap((digit) => {
+  return digits.flatMap(digit => {
     if (digit === '') {
       return Array(missingFields).fill('0');
     }
@@ -86,7 +91,7 @@ function Packet(data) {
   } else if (typeof data === 'string') {
     this.questions.push(data);
   } else if (typeof data === 'object') {
-    const type = ({}).toString.call(data).match(/\[object (\w+)\]/)[1];
+    const type = {}.toString.call(data).match(/\[object (\w+)\]/)[1];
     if (type === 'Array') {
       this.questions = data;
     }
@@ -103,32 +108,32 @@ function Packet(data) {
  * @docs https://tools.ietf.org/html/rfc1035#section-3.2.2
  */
 Packet.TYPE = {
-  A      : 0x01,
-  NS     : 0x02,
-  MD     : 0x03,
-  MF     : 0x04,
-  CNAME  : 0x05,
-  SOA    : 0x06,
-  MB     : 0x07,
-  MG     : 0x08,
-  MR     : 0x09,
-  NULL   : 0x0A,
-  WKS    : 0x0B,
-  PTR    : 0x0C,
-  HINFO  : 0x0D,
-  MINFO  : 0x0E,
-  MX     : 0x0F,
-  TXT    : 0x10,
-  AAAA   : 0x1C,
-  SRV    : 0x21,
-  EDNS   : 0x29,
-  SPF    : 0x63,
-  AXFR   : 0xFC,
-  MAILB  : 0xFD,
-  MAILA  : 0xFE,
-  ANY    : 0xFF,
-  CAA    : 0x101,
-  DNSKEY : 0x30,
+  A: 0x01,
+  NS: 0x02,
+  MD: 0x03,
+  MF: 0x04,
+  CNAME: 0x05,
+  SOA: 0x06,
+  MB: 0x07,
+  MG: 0x08,
+  MR: 0x09,
+  NULL: 0x0a,
+  WKS: 0x0b,
+  PTR: 0x0c,
+  HINFO: 0x0d,
+  MINFO: 0x0e,
+  MX: 0x0f,
+  TXT: 0x10,
+  AAAA: 0x1c,
+  SRV: 0x21,
+  EDNS: 0x29,
+  SPF: 0x63,
+  AXFR: 0xfc,
+  MAILB: 0xfd,
+  MAILA: 0xfe,
+  ANY: 0xff,
+  CAA: 0x101,
+  DNSKEY: 0x30,
 };
 /**
  * [QUERY_CLASS description]
@@ -136,11 +141,11 @@ Packet.TYPE = {
  * @docs https://tools.ietf.org/html/rfc1035#section-3.2.4
  */
 Packet.CLASS = {
-  IN  : 0x01,
-  CS  : 0x02,
-  CH  : 0x03,
-  HS  : 0x04,
-  ANY : 0xFF,
+  IN: 0x01,
+  CS: 0x02,
+  CH: 0x03,
+  HS: 0x04,
+  ANY: 0xff,
 };
 /**
  * DNS response codes
@@ -148,12 +153,12 @@ Packet.CLASS = {
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.1
  */
 Packet.RCODE = {
-  NOERROR  : 0,
-  FORMERR  : 1,
-  SERVFAIL : 2,
-  NXDOMAIN : 3,
-  NOTIMP   : 4,
-  REFUSED  : 5,
+  NOERROR: 0,
+  FORMERR: 1,
+  SERVFAIL: 2,
+  NXDOMAIN: 3,
+  NOTIMP: 4,
+  REFUSED: 5,
 };
 /**
  * [EDNS_OPTION_CODE description]
@@ -170,7 +175,7 @@ Packet.EDNS_OPTION_CODE = {
  * response forgery / cache poisoning impractical.
  * @return {number} integer in [0, 0xFFFF]
  */
-Packet.uuid = function() {
+Packet.uuid = function () {
   return randomInt(0x10000);
 };
 
@@ -179,16 +184,17 @@ Packet.uuid = function() {
  * @param  {[type]} buffer [description]
  * @return {[type]}        [description]
  */
-Packet.parse = function(buffer) {
+Packet.parse = function (buffer) {
   const packet = new Packet();
   const reader = new Packet.Reader(buffer);
   packet.header = Packet.Header.parse(reader);
-  ([ // props             parser              count
-    [ 'questions', Packet.Question, packet.header.qdcount ],
-    [ 'answers', Packet.Resource, packet.header.ancount ],
-    [ 'authorities', Packet.Resource, packet.header.nscount ],
-    [ 'additionals', Packet.Resource, packet.header.arcount ],
-  ]).forEach(function(def) {
+  [
+    // props             parser              count
+    ['questions', Packet.Question, packet.header.qdcount],
+    ['answers', Packet.Resource, packet.header.ancount],
+    ['authorities', Packet.Resource, packet.header.nscount],
+    ['additionals', Packet.Resource, packet.header.arcount],
+  ].forEach(function (def) {
     const section = def[0];
     const decoder = def[1];
     let count = def[2];
@@ -206,7 +212,8 @@ Packet.parse = function(buffer) {
   // record's TTL high byte. Merge them so callers see the full 12-bit value.
   const opt = packet.additionals.find(r => r && r.type === Packet.TYPE.EDNS);
   if (opt && opt.extendedRcode) {
-    packet.header.rcode = (opt.extendedRcode << 4) | (packet.header.rcode & 0xF);
+    packet.header.rcode =
+      (opt.extendedRcode << 4) | (packet.header.rcode & 0xf);
   }
   return packet;
 };
@@ -215,8 +222,8 @@ Packet.parse = function(buffer) {
  * recursive
  */
 Object.defineProperty(Packet.prototype, 'recursive', {
-  enumerable   : true,
-  configurable : true,
+  enumerable: true,
+  configurable: true,
   get() {
     return !!this.header.rd;
   },
@@ -229,7 +236,7 @@ Object.defineProperty(Packet.prototype, 'recursive', {
  * [toBuffer description]
  * @return {[type]} [description]
  */
-Packet.prototype.toBuffer = function(writer) {
+Packet.prototype.toBuffer = function (writer) {
   writer = writer || new Packet.Writer();
   // RFC 1035 §4.1.4 — record the byte offset of each name we encode so later
   // occurrences can be replaced by a compression pointer. The map is owned by
@@ -240,33 +247,40 @@ Packet.prototype.toBuffer = function(writer) {
   this.header.ancount = this.answers.length;
   this.header.nscount = this.authorities.length;
   this.header.arcount = this.additionals.length;
-  if (!(this instanceof Packet.Header)) { this.header = new Packet.Header(this.header); }
+  if (!(this instanceof Packet.Header)) {
+    this.header = new Packet.Header(this.header);
+  }
   // RFC 6891 §6.1.3: if the caller set a header.rcode >= 16 the high byte must
   // be carried in the OPT record's TTL. Propagate it before the header is
   // serialized so the low nibble alone goes into the header.
-  if (this.header.rcode > 0xF) {
+  if (this.header.rcode > 0xf) {
     const opt = this.additionals.find(r => r && r.type === Packet.TYPE.EDNS);
     if (opt) {
-      opt.extendedRcode = (this.header.rcode >>> 4) & 0xFF;
+      opt.extendedRcode = (this.header.rcode >>> 4) & 0xff;
       opt.ttl = ednsTtl(opt.extendedRcode, opt.version || 0, opt.doFlag);
     } else {
-      debug('node-dns > rcode %d > 15 but no OPT record; truncating to low nibble',
-        this.header.rcode);
+      debug(
+        'node-dns > rcode %d > 15 but no OPT record; truncating to low nibble',
+        this.header.rcode,
+      );
     }
   }
   this.header.toBuffer(writer);
-  ([ // section          encoder
-    [ 'questions', Packet.Question ],
-    [ 'answers', Packet.Resource ],
-    [ 'authorities', Packet.Resource ],
-    [ 'additionals', Packet.Resource ],
-  ]).forEach(function(def) {
-    const section = def[0];
-    const Encoder = def[1];
-    (this[section] || []).forEach(function(resource) {
-      Encoder.encode(resource, writer);
-    });
-  }.bind(this));
+  [
+    // section          encoder
+    ['questions', Packet.Question],
+    ['answers', Packet.Resource],
+    ['authorities', Packet.Resource],
+    ['additionals', Packet.Resource],
+  ].forEach(
+    function (def) {
+      const section = def[0];
+      const Encoder = def[1];
+      (this[section] || []).forEach(function (resource) {
+        Encoder.encode(resource, writer);
+      });
+    }.bind(this),
+  );
   return writer.toBuffer();
 };
 
@@ -275,7 +289,7 @@ Packet.prototype.toBuffer = function(writer) {
  * @param {[type]} options [description]
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.1
  */
-Packet.Header = function(header) {
+Packet.Header = function (header) {
   this.id = 0;
   this.qr = 0;
   this.opcode = 0;
@@ -302,7 +316,7 @@ Packet.Header = function(header) {
  * @return {[type]}        [description]
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.1
  */
-Packet.Header.parse = function(reader) {
+Packet.Header.parse = function (reader) {
   const header = new Packet.Header();
   if (reader instanceof Buffer) {
     reader = new Packet.Reader(reader);
@@ -330,7 +344,7 @@ Packet.Header.parse = function(reader) {
  * [toBuffer description]
  * @return {[type]} [description]
  */
-Packet.Header.prototype.toBuffer = function(writer) {
+Packet.Header.prototype.toBuffer = function (writer) {
   writer = writer || new Packet.Writer();
   writer.write(this.id, 16);
   writer.write(this.qr, 1);
@@ -344,7 +358,7 @@ Packet.Header.prototype.toBuffer = function(writer) {
   writer.write(0, 1);
   writer.write(this.ad, 1);
   writer.write(this.cd, 1);
-  writer.write(this.rcode & 0xF, 4);
+  writer.write(this.rcode & 0xf, 4);
   writer.write(this.qdcount, 16);
   writer.write(this.ancount, 16);
   writer.write(this.nscount, 16);
@@ -356,10 +370,10 @@ Packet.Header.prototype.toBuffer = function(writer) {
  * Question section format
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.2
  */
-Packet.Question = function(name, type, cls) {
+Packet.Question = function (name, type, cls) {
   const defaults = {
-    type  : Packet.TYPE.ANY,
-    class : Packet.CLASS.ANY,
+    type: Packet.TYPE.ANY,
+    class: Packet.CLASS.ANY,
   };
   if (typeof name === 'object') {
     for (const k in name) {
@@ -378,7 +392,7 @@ Packet.Question = function(name, type, cls) {
  * @param  {[type]} writer [description]
  * @return {[type]}        [description]
  */
-Packet.Question.prototype.toBuffer = function(writer) {
+Packet.Question.prototype.toBuffer = function (writer) {
   return Packet.Question.encode(this, writer);
 };
 
@@ -387,8 +401,7 @@ Packet.Question.prototype.toBuffer = function(writer) {
  * @param  {[type]} reader [description]
  * @return {[type]}        [description]
  */
-Packet.Question.parse =
-Packet.Question.decode = function(reader) {
+Packet.Question.parse = Packet.Question.decode = function (reader) {
   const question = new Packet.Question();
   if (reader instanceof Buffer) {
     reader = new Packet.Reader(reader);
@@ -399,7 +412,7 @@ Packet.Question.decode = function(reader) {
   return question;
 };
 
-Packet.Question.encode = function(question, writer) {
+Packet.Question.encode = function (question, writer) {
   const ownsWriter = !writer;
   writer = writer || new Packet.Writer();
   Packet.Name.encode(question.name, writer);
@@ -412,19 +425,22 @@ Packet.Question.encode = function(question, writer) {
  * Resource record format
  * @docs https://tools.ietf.org/html/rfc1035#section-4.1.3
  */
-Packet.Resource = function(name, type, cls, ttl) {
+Packet.Resource = function (name, type, cls, ttl) {
   const defaults = {
-    name  : '',
-    ttl   : 300,
-    type  : Packet.TYPE.ANY,
-    class : Packet.CLASS.ANY,
+    name: '',
+    ttl: 300,
+    type: Packet.TYPE.ANY,
+    class: Packet.CLASS.ANY,
   };
   let input;
   if (typeof name === 'object') {
     input = name;
   } else {
     input = {
-      name, type, class: cls, ttl,
+      name,
+      type,
+      class: cls,
+      ttl,
     };
   }
   Object.assign(this, defaults, input);
@@ -436,7 +452,7 @@ Packet.Resource = function(name, type, cls, ttl) {
  * @param  {[type]} writer [description]
  * @return {[type]}        [description]
  */
-Packet.Resource.prototype.toBuffer = function(writer) {
+Packet.Resource.prototype.toBuffer = function (writer) {
   return Packet.Resource.encode(this, writer);
 };
 
@@ -446,15 +462,15 @@ Packet.Resource.prototype.toBuffer = function(writer) {
  * @param  {[type]} writer   [description]
  * @return {[type]}          [description]
  */
-Packet.Resource.encode = function(resource, writer) {
+Packet.Resource.encode = function (resource, writer) {
   writer = writer || new Packet.Writer();
   Packet.Name.encode(resource.name, writer);
   writer.write(resource.type, 16);
   writer.write(resource.class, 16);
   // RFC 2181 §8: TTL is an unsigned 32-bit value but high-bit values are
   // historically unsafe; clamp to 2^31 - 1 on the wire.
-  writer.write(Math.min(resource.ttl >>> 0, 0x7FFFFFFF), 32);
-  const encoder = Object.keys(Packet.TYPE).filter(function(type) {
+  writer.write(Math.min(resource.ttl >>> 0, 0x7fffffff), 32);
+  const encoder = Object.keys(Packet.TYPE).filter(function (type) {
     return resource.type === Packet.TYPE[type];
   })[0];
   // RDLENGTH is owned here, not by each rdata encoder. We write a 16-bit
@@ -472,7 +488,9 @@ Packet.Resource.encode = function(resource, writer) {
     // decoder preserved as `resource.data`. Without this, RDATA would be
     // omitted entirely, truncating the wire format and corrupting any
     // records that follow.
-    const data = Buffer.isBuffer(resource.data) ? resource.data : Buffer.alloc(0);
+    const data = Buffer.isBuffer(resource.data)
+      ? resource.data
+      : Buffer.alloc(0);
     for (const byte of data) {
       writer.write(byte, 8);
     }
@@ -486,8 +504,7 @@ Packet.Resource.encode = function(resource, writer) {
  * @param  {[type]} reader [description]
  * @return {[type]}        [description]
  */
-Packet.Resource.parse =
-Packet.Resource.decode = function(reader) {
+Packet.Resource.parse = Packet.Resource.decode = function (reader) {
   if (reader instanceof Buffer) {
     reader = new Packet.Reader(reader);
   }
@@ -499,9 +516,9 @@ Packet.Resource.decode = function(reader) {
   // RFC 2181 §8: TTLs are an unsigned 32-bit field but legacy implementations
   // treated them as signed. Anything with the high bit set is clamped to
   // 2^31 - 1 so it cannot be misinterpreted as a negative value.
-  if (resource.ttl > 0x7FFFFFFF) resource.ttl = 0x7FFFFFFF;
+  if (resource.ttl > 0x7fffffff) resource.ttl = 0x7fffffff;
   let length = reader.read(16);
-  const parser = Object.keys(Packet.TYPE).filter(function(type) {
+  const parser = Object.keys(Packet.TYPE).filter(function (type) {
     return resource.type === Packet.TYPE[type];
   })[0];
   if (parser in Packet.Resource) {
@@ -522,14 +539,16 @@ Packet.Resource.decode = function(reader) {
  */
 // RFC 1035 §2.3.4 — wire-format limits.
 Packet.Name = {
-  COPY      : 0xc0,
-  MAX_LABEL : 63,
-  MAX_NAME  : 255,
-  decode    : function(reader) {
+  COPY: 0xc0,
+  MAX_LABEL: 63,
+  MAX_NAME: 255,
+  decode: function (reader) {
     if (reader instanceof Buffer) {
       reader = new Packet.Reader(reader);
     }
-    const name = []; let o; let len = reader.read(8);
+    const name = [];
+    let o;
+    let len = reader.read(8);
     // Track each pointer target we follow. A crafted packet can chain
     // pointers in a cycle; without this guard, decode would loop forever.
     const visited = new Set();
@@ -554,15 +573,21 @@ Packet.Name = {
       }
       // RFC 1035: a label length byte has its top two bits clear (00).
       // The 01/10 combinations are reserved and indicate a malformed name.
-      if (len & 0xC0) {
-        throw new Error(`Name decode: invalid label length byte 0x${len.toString(16)}`);
+      if (len & 0xc0) {
+        throw new Error(
+          `Name decode: invalid label length byte 0x${len.toString(16)}`,
+        );
       }
       if (len > Packet.Name.MAX_LABEL) {
-        throw new Error(`Name decode: label exceeds ${Packet.Name.MAX_LABEL} octets`);
+        throw new Error(
+          `Name decode: label exceeds ${Packet.Name.MAX_LABEL} octets`,
+        );
       }
       totalOctets += len + 1;
       if (totalOctets > Packet.Name.MAX_NAME) {
-        throw new Error(`Name decode: name exceeds ${Packet.Name.MAX_NAME} octets`);
+        throw new Error(
+          `Name decode: name exceeds ${Packet.Name.MAX_NAME} octets`,
+        );
       }
       let part = '';
       while (len--) part += String.fromCharCode(reader.read(8));
@@ -572,7 +597,7 @@ Packet.Name = {
     if (o) reader.offset = o;
     return name.join('.');
   },
-  encode: function(domain, writer) {
+  encode: function (domain, writer) {
     // Only materialize a Buffer when we created the writer; if the caller
     // passed one, they own the final toBuffer() and we avoid an O(buffer)
     // materialization per name (a big deal once many records share a suffix).
@@ -584,14 +609,16 @@ Packet.Name = {
       if (part.length > Packet.Name.MAX_LABEL) {
         throw new Error(
           `Name encode: label "${part}" is ${part.length} octets ` +
-          `(max ${Packet.Name.MAX_LABEL})`);
+            `(max ${Packet.Name.MAX_LABEL})`,
+        );
       }
       totalOctets += part.length + 1;
     }
     if (totalOctets > Packet.Name.MAX_NAME) {
       throw new Error(
         `Name encode: name "${domain}" encodes to ${totalOctets} octets ` +
-        `(max ${Packet.Name.MAX_NAME})`);
+          `(max ${Packet.Name.MAX_NAME})`,
+      );
     }
     // RFC 1035 §4.1.4 — if the writer carries a name-offset table, emit a
     // compression pointer for any suffix we've already serialized; otherwise
@@ -602,7 +629,7 @@ Packet.Name = {
     for (let i = 0; i < parts.length; i++) {
       const suffix = parts.slice(i).join('.').toLowerCase();
       if (compress && writer.names.has(suffix)) {
-        writer.write(0xC000 | writer.names.get(suffix), 16);
+        writer.write(0xc000 | writer.names.get(suffix), 16);
         return ownsWriter ? writer.toBuffer() : undefined;
       }
       if (compress) {
@@ -624,24 +651,24 @@ Packet.Name = {
  * @type {Object}
  * @docs https://tools.ietf.org/html/rfc1035#section-3.4.1
  */
-Packet.Resource.A = function(address) {
+Packet.Resource.A = function (address) {
   this.type = Packet.TYPE.A;
   this.class = Packet.CLASS.IN;
   this.address = address;
   return this;
 };
 
-Packet.Resource.A.encode = function(record, writer) {
+Packet.Resource.A.encode = function (record, writer) {
   writer = writer || new Packet.Writer();
   // RDLENGTH is written by Packet.Resource.encode; only emit the rdata here.
   // No toBuffer() — the caller owns materialization (avoids O(N) re-walks of
   // the message bit-array per record).
-  record.address.split('.').forEach(function(part) {
+  record.address.split('.').forEach(function (part) {
     writer.write(parseInt(part, 10), 8);
   });
 };
 
-Packet.Resource.A.decode = function(reader, length) {
+Packet.Resource.A.decode = function (reader, length) {
   const parts = [];
   while (length--) parts.push(reader.read(8));
   this.address = parts.join('.');
@@ -654,7 +681,7 @@ Packet.Resource.A.decode = function(reader, length) {
  * @param {[type]} priority [description]
  * @docs https://tools.ietf.org/html/rfc1035#section-3.3.9
  */
-Packet.Resource.MX = function(exchange, priority) {
+Packet.Resource.MX = function (exchange, priority) {
   this.type = Packet.TYPE.MX;
   this.class = Packet.CLASS.IN;
   this.exchange = exchange;
@@ -667,7 +694,7 @@ Packet.Resource.MX = function(exchange, priority) {
  * @param  {[type]} writer [description]
  * @return {[type]}        [description]
  */
-Packet.Resource.MX.encode = function(record, writer) {
+Packet.Resource.MX.encode = function (record, writer) {
   writer = writer || new Packet.Writer();
   writer.write(record.priority, 16);
   Packet.Name.encode(record.exchange, writer);
@@ -678,7 +705,7 @@ Packet.Resource.MX.encode = function(record, writer) {
  * @param  {[type]} length [description]
  * @return {[type]}        [description]
  */
-Packet.Resource.MX.decode = function(reader, length) {
+Packet.Resource.MX.decode = function (reader, length) {
   this.priority = reader.read(16);
   this.exchange = Packet.Name.decode(reader);
   return this;
@@ -689,7 +716,7 @@ Packet.Resource.MX.decode = function(reader, length) {
  * @docs https://en.wikipedia.org/wiki/IPv6
  */
 Packet.Resource.AAAA = {
-  decode: function(reader, length) {
+  decode: function (reader, length) {
     const parts = [];
     while (length) {
       length -= 2;
@@ -698,9 +725,9 @@ Packet.Resource.AAAA = {
     this.address = toIPv6(parts);
     return this;
   },
-  encode: function(record, writer) {
+  encode: function (record, writer) {
     writer = writer || new Packet.Writer();
-    fromIPv6(record.address).forEach(function(part) {
+    fromIPv6(record.address).forEach(function (part) {
       writer.write(parseInt(part, 16), 16);
     });
   },
@@ -711,11 +738,11 @@ Packet.Resource.AAAA = {
  * @docs https://tools.ietf.org/html/rfc1035#section-3.3.11
  */
 Packet.Resource.NS = {
-  decode: function(reader, length) {
+  decode: function (reader, length) {
     this.ns = Packet.Name.decode(reader);
     return this;
   },
-  encode: function(record, writer) {
+  encode: function (record, writer) {
     writer = writer || new Packet.Writer();
     Packet.Name.encode(record.ns, writer);
   },
@@ -725,13 +752,12 @@ Packet.Resource.NS = {
  * @type {Object}
  * @docs https://tools.ietf.org/html/rfc1035#section-3.3.1
  */
-Packet.Resource.PTR =
-Packet.Resource.CNAME = {
-  decode: function(reader, length) {
+Packet.Resource.PTR = Packet.Resource.CNAME = {
+  decode: function (reader, length) {
     this.domain = Packet.Name.decode(reader);
     return this;
   },
-  encode: function(record, writer) {
+  encode: function (record, writer) {
     writer = writer || new Packet.Writer();
     Packet.Name.encode(record.domain, writer);
   },
@@ -741,11 +767,11 @@ Packet.Resource.CNAME = {
  * @type {[type]}
  * @docs https://tools.ietf.org/html/rfc1035#section-3.3.14
  */
-Packet.Resource.SPF =
-Packet.Resource.TXT = {
-  decode: function(reader, length) {
+Packet.Resource.SPF = Packet.Resource.TXT = {
+  decode: function (reader, length) {
     const parts = [];
-    let bytesRead = 0; let chunkLength;
+    let bytesRead = 0;
+    let chunkLength;
 
     while (bytesRead < length) {
       chunkLength = reader.read(8); // text length
@@ -760,29 +786,33 @@ Packet.Resource.TXT = {
     this.data = Buffer.from(parts).toString('utf8');
     return this;
   },
-  encode: function(record, writer) {
+  encode: function (record, writer) {
     writer = writer || new Packet.Writer();
 
     // make sure that resource data is a an array of strings
-    const characterStrings = Array.isArray(record.data) ? record.data : [ record.data ];
+    const characterStrings = Array.isArray(record.data)
+      ? record.data
+      : [record.data];
     // convert array of strings to array of buffers
-    const characterStringBuffers = characterStrings.map(function(characterString) {
-      if (Buffer.isBuffer(characterString)) {
+    const characterStringBuffers = characterStrings
+      .map(function (characterString) {
+        if (Buffer.isBuffer(characterString)) {
+          return characterString;
+        }
+        if (typeof characterString === 'string') {
+          return Buffer.from(characterString, 'utf8');
+        }
+        return false;
+      })
+      .filter(function (characterString) {
+        // remove invalid values from the array
         return characterString;
-      }
-      if (typeof characterString === 'string') {
-        return Buffer.from(characterString, 'utf8');
-      }
-      return false;
-    }).filter(function(characterString) {
-      // remove invalid values from the array
-      return characterString;
-    });
+      });
 
     // write each string to output (RDLENGTH is back-filled by Resource.encode)
-    characterStringBuffers.forEach(function(buffer) {
+    characterStringBuffers.forEach(function (buffer) {
       writer.write(buffer.length, 8); // text length
-      buffer.forEach(function(c) {
+      buffer.forEach(function (c) {
         writer.write(c, 8);
       });
     });
@@ -794,7 +824,7 @@ Packet.Resource.TXT = {
  * @docs https://tools.ietf.org/html/rfc1035#section-3.3.13
  */
 Packet.Resource.SOA = {
-  decode: function(reader, length) {
+  decode: function (reader, length) {
     this.primary = Packet.Name.decode(reader);
     this.admin = Packet.Name.decode(reader);
     this.serial = reader.read(32);
@@ -804,7 +834,7 @@ Packet.Resource.SOA = {
     this.minimum = reader.read(32);
     return this;
   },
-  encode: function(record, writer) {
+  encode: function (record, writer) {
     writer = writer || new Packet.Writer();
     Packet.Name.encode(record.primary, writer);
     Packet.Name.encode(record.admin, writer);
@@ -813,7 +843,7 @@ Packet.Resource.SOA = {
     writer.write(record.retry, 32);
     writer.write(record.expiration, 32);
     // RFC 2308 §4: the SOA minimum field is also a TTL; same 31-bit ceiling.
-    writer.write(Math.min(record.minimum >>> 0, 0x7FFFFFFF), 32);
+    writer.write(Math.min(record.minimum >>> 0, 0x7fffffff), 32);
   },
 };
 /**
@@ -822,14 +852,14 @@ Packet.Resource.SOA = {
  * @docs https://tools.ietf.org/html/rfc2782
  */
 Packet.Resource.SRV = {
-  decode: function(reader, length) {
+  decode: function (reader, length) {
     this.priority = reader.read(16);
     this.weight = reader.read(16);
     this.port = reader.read(16);
     this.target = Packet.Name.decode(reader);
     return this;
   },
-  encode: function(record, writer) {
+  encode: function (record, writer) {
     writer = writer || new Packet.Writer();
     writer.write(record.priority, 16);
     writer.write(record.weight, 16);
@@ -844,24 +874,25 @@ Packet.Resource.SRV = {
 //   bit   16:   DO (DNSSEC OK)
 //   bits 17-31: reserved Z, must be zero
 const ednsTtl = (extendedRcode, version, doFlag) =>
-  (((extendedRcode & 0xff) << 24) >>> 0)
-  | ((version & 0xff) << 16)
-  | (doFlag ? 0x8000 : 0);
+  (((extendedRcode & 0xff) << 24) >>> 0) |
+  ((version & 0xff) << 16) |
+  (doFlag ? 0x8000 : 0);
 
 // RFC 6891 §6.2.5 — a reasonable default for the requestor's UDP payload size.
 // The pre-EDNS 512-byte limit is conservative; modern resolvers advertise
 // 4096 so upstreams need not truncate responses that fit in a typical MTU.
 Packet.EDNS_DEFAULT_UDP_PAYLOAD_SIZE = 4096;
 
-Packet.Resource.EDNS = function(rdata, opts = {}) {
+Packet.Resource.EDNS = function (rdata, opts = {}) {
   const extendedRcode = opts.extendedRcode || 0;
   const version = opts.version || 0;
   const doFlag = !!opts.doFlag;
-  const udpPayloadSize = opts.udpPayloadSize || Packet.EDNS_DEFAULT_UDP_PAYLOAD_SIZE;
+  const udpPayloadSize =
+    opts.udpPayloadSize || Packet.EDNS_DEFAULT_UDP_PAYLOAD_SIZE;
   return {
-    type  : Packet.TYPE.EDNS,
-    class : udpPayloadSize,
-    ttl   : ednsTtl(extendedRcode, version, doFlag),
+    type: Packet.TYPE.EDNS,
+    class: udpPayloadSize,
+    ttl: ednsTtl(extendedRcode, version, doFlag),
     extendedRcode,
     version,
     doFlag,
@@ -869,7 +900,7 @@ Packet.Resource.EDNS = function(rdata, opts = {}) {
   };
 };
 
-Packet.Resource.EDNS.decode = function(reader, length) {
+Packet.Resource.EDNS.decode = function (reader, length) {
   // When invoked through Resource.parse, this.type/class/ttl are already set
   // from the wire. Direct callers (e.g. unit tests) hit defaults instead.
   this.type = this.type ?? Packet.TYPE.EDNS;
@@ -885,15 +916,24 @@ Packet.Resource.EDNS.decode = function(reader, length) {
     const optionCode = reader.read(16);
     const optionLength = reader.read(16); // In octet (https://tools.ietf.org/html/rfc6891#page-8)
 
-    const decoder = Object.keys(Packet.EDNS_OPTION_CODE).filter(function(type) {
-      return optionCode === Packet.EDNS_OPTION_CODE[type];
-    })[0];
-    if (decoder in Packet.Resource.EDNS && Packet.Resource.EDNS[decoder].decode) {
+    const decoder = Object.keys(Packet.EDNS_OPTION_CODE).filter(
+      function (type) {
+        return optionCode === Packet.EDNS_OPTION_CODE[type];
+      },
+    )[0];
+    if (
+      decoder in Packet.Resource.EDNS &&
+      Packet.Resource.EDNS[decoder].decode
+    ) {
       const rdata = Packet.Resource.EDNS[decoder].decode(reader, optionLength);
       this.rdata.push(rdata);
     } else {
       reader.read(optionLength); // Ignore data that doesn't understand
-      debug('node-dns > unknown EDNS rdata decoder %s(%j)', decoder, optionCode);
+      debug(
+        'node-dns > unknown EDNS rdata decoder %s(%j)',
+        decoder,
+        optionCode,
+      );
     }
 
     length = length - 4 - optionLength;
@@ -901,39 +941,48 @@ Packet.Resource.EDNS.decode = function(reader, length) {
   return this;
 };
 
-Packet.Resource.EDNS.encode = function(record, writer) {
+Packet.Resource.EDNS.encode = function (record, writer) {
   writer = writer || new Packet.Writer();
   // RDLENGTH is owned by Packet.Resource.encode; emit option records back to
   // back into the main writer.
   for (const rdata of record.rdata) {
-    const encoder = Object.keys(Packet.EDNS_OPTION_CODE).filter(function(type) {
-      return rdata.ednsCode === Packet.EDNS_OPTION_CODE[type];
-    })[0];
-    if (encoder in Packet.Resource.EDNS && Packet.Resource.EDNS[encoder].encode) {
+    const encoder = Object.keys(Packet.EDNS_OPTION_CODE).filter(
+      function (type) {
+        return rdata.ednsCode === Packet.EDNS_OPTION_CODE[type];
+      },
+    )[0];
+    if (
+      encoder in Packet.Resource.EDNS &&
+      Packet.Resource.EDNS[encoder].encode
+    ) {
       const w = new Packet.Writer();
       Packet.Resource.EDNS[encoder].encode(rdata, w);
       writer.write(rdata.ednsCode, 16);
       writer.write(w.buffer.length / 8, 16);
       writer.writeBuffer(w);
     } else {
-      debug('node-dns > unknown EDNS rdata encoder %s(%j)', encoder, rdata.ednsCode);
+      debug(
+        'node-dns > unknown EDNS rdata encoder %s(%j)',
+        encoder,
+        rdata.ednsCode,
+      );
     }
   }
 };
 
-Packet.Resource.EDNS.ECS = function(clientIp) {
-  const [ ip, prefixLength ] = clientIp.split('/');
+Packet.Resource.EDNS.ECS = function (clientIp) {
+  const [ip, prefixLength] = clientIp.split('/');
   const numPrefixLength = parseInt(prefixLength) || 32;
   return {
-    ednsCode           : Packet.EDNS_OPTION_CODE.ECS,
-    family             : 1,
-    sourcePrefixLength : numPrefixLength,
-    scopePrefixLength  : 0,
+    ednsCode: Packet.EDNS_OPTION_CODE.ECS,
+    family: 1,
+    sourcePrefixLength: numPrefixLength,
+    scopePrefixLength: 0,
     ip,
   };
 };
 
-Packet.Resource.EDNS.ECS.decode = function(reader, length) {
+Packet.Resource.EDNS.ECS.decode = function (reader, length) {
   const rdata = {};
   rdata.ednsCode = Packet.EDNS_OPTION_CODE.ECS;
   rdata.family = reader.read(16);
@@ -968,7 +1017,7 @@ Packet.Resource.EDNS.ECS.decode = function(reader, length) {
   return rdata;
 };
 
-Packet.Resource.EDNS.ECS.encode = function(record, writer) {
+Packet.Resource.EDNS.ECS.encode = function (record, writer) {
   // RFC 7871 §6: the ADDRESS field carries only the leftmost
   // ceil(sourcePrefixLength / 8) octets.
   const octets = Math.ceil(record.sourcePrefixLength / 8);
@@ -997,10 +1046,13 @@ function expandIPv6ToBytes(address) {
     tail = [];
   } else {
     head = address.slice(0, idx).split(':').filter(Boolean);
-    tail = address.slice(idx + 2).split(':').filter(Boolean);
+    tail = address
+      .slice(idx + 2)
+      .split(':')
+      .filter(Boolean);
   }
   const missing = 8 - head.length - tail.length;
-  const groups = [ ...head, ...new Array(missing).fill('0'), ...tail ];
+  const groups = [...head, ...new Array(missing).fill('0'), ...tail];
   const out = new Array(16).fill(0);
   for (let g = 0; g < 8; g++) {
     const n = parseInt(groups[g], 16) || 0;
@@ -1011,18 +1063,18 @@ function expandIPv6ToBytes(address) {
 }
 
 Packet.Resource.CAA = {
-  encode: function(record, writer) {
+  encode: function (record, writer) {
     writer = writer || new Packet.Writer();
     // RDLENGTH is written by Packet.Resource.encode.
     const buffer = Buffer.from(record.tag + record.value, 'utf8');
     writer.write(record.flags, 8);
     writer.write(record.tag.length, 8);
 
-    buffer.forEach(function(c) {
+    buffer.forEach(function (c) {
       writer.write(c, 8);
     });
   },
-  decode: function(reader, length) {
+  decode: function (reader, length) {
     this.flags = reader.read(8);
     const tagLength = reader.read(8);
     const bytes = [];
@@ -1041,21 +1093,21 @@ Packet.Resource.CAA = {
  * @link https://www.iana.org/assignments/dns-sec-alg-numbers/dns-sec-alg-numbers.xhtml#table-dns-sec-alg-numbers-1
  */
 Packet.Resource.DNSKEY = {
-  decode: function(reader, length) {
+  decode: function (reader, length) {
     const RData = [];
     while (RData.length < length) {
       RData.push(reader.read(8));
     }
-    this.flags = RData[0] << 8 | RData[1];
+    this.flags = (RData[0] << 8) | RData[1];
     this.protocol = RData[2];
     this.algorithm = RData[3];
     // for key tag
     let ac = 0;
     for (let i = 0; i < length; ++i) {
-      ac += (i & 1) ? RData[i] : RData[i] << 8;
+      ac += i & 1 ? RData[i] : RData[i] << 8;
     }
-    ac += (ac >> 16) & 0xFFFF;
-    this.keyTag = ac & 0XFFFF;
+    ac += (ac >> 16) & 0xffff;
+    this.keyTag = ac & 0xffff;
 
     //  0 1 2 3 4 5 6 7 8 9 0 1 2 3 4 5 = 16
     // convert binary flags
@@ -1069,14 +1121,14 @@ Packet.Resource.DNSKEY = {
     this.key = Buffer.from(RData.slice(4)).toString('base64');
     return this;
   },
-  encode: function(record, writer) {
+  encode: function (record, writer) {
     writer = writer || new Packet.Writer();
     // RDLENGTH is written by Packet.Resource.encode.
     const buffer = Buffer.from(record.key, 'base64');
     writer.write(record.flags, 16);
     writer.write(record.protocol, 8);
     writer.write(record.algorithm, 8);
-    buffer.forEach(function(c) {
+    buffer.forEach(function (c) {
       writer.write(c, 8);
     });
   },
@@ -1089,16 +1141,16 @@ Packet.Resource.DNSKEY = {
  * @type {{decode: (function(*, *): Packet.Resource.RRSIG)}}
  */
 Packet.Resource.RRSIG = {
-  decode: function(reader, length) {
+  decode: function (reader, length) {
     function dateForSig(date) {
       // javascript date is from millisecond
       date = new Date(date * 1000);
       const definitions = {
-        month   : (date.getUTCMonth() + 1),
-        date    : date.getUTCDate(),
-        hour    : date.getUTCHours(),
-        minutes : date.getUTCMinutes(),
-        seconds : date.getUTCSeconds(),
+        month: date.getUTCMonth() + 1,
+        date: date.getUTCDate(),
+        hour: date.getUTCHours(),
+        minutes: date.getUTCMinutes(),
+        seconds: date.getUTCSeconds(),
       };
       let i;
       for (i in definitions) {
@@ -1107,16 +1159,23 @@ Packet.Resource.RRSIG = {
           definitions[i] = '0' + '' + definitions[i];
         }
       }
-      return date.getFullYear() + '' +
-        definitions.month + '' +
-        definitions.date + '' +
-        definitions.hour + '' +
-        definitions.minutes + '' +
-        definitions.seconds;
+      return (
+        date.getFullYear() +
+        '' +
+        definitions.month +
+        '' +
+        definitions.date +
+        '' +
+        definitions.hour +
+        '' +
+        definitions.minutes +
+        '' +
+        definitions.seconds
+      );
     }
 
     // calculate max-offset uint8
-    const maxOffset = reader.offset + (length * 8);
+    const maxOffset = reader.offset + length * 8;
     /*
      * Stuff sign contains 18 octets
      */
@@ -1141,19 +1200,19 @@ Packet.Resource.RRSIG = {
 Packet.Reader = BufferReader;
 Packet.Writer = BufferWriter;
 
-Packet.createResponseFromRequest = function(request) {
+Packet.createResponseFromRequest = function (request) {
   const response = new Packet();
   response.header = new Packet.Header({
-    id     : request.header.id,
-    opcode : request.header.opcode,
-    rd     : request.header.rd,
-    qr     : 1,
+    id: request.header.id,
+    opcode: request.header.opcode,
+    rd: request.header.rd,
+    qr: 1,
   });
   response.questions = request.questions.slice();
   return response;
 };
 
-Packet.createResourceFromQuestion = function(base, record) {
+Packet.createResourceFromQuestion = function (base, record) {
   const resource = new Packet.Resource(base);
   Object.assign(resource, record);
   return resource;
@@ -1181,7 +1240,7 @@ Packet.readStream = socket => {
       }
       if (!expected && chunklen >= 2) {
         if (chunks.length > 1) {
-          chunks = [ Buffer.concat(chunks, chunklen) ];
+          chunks = [Buffer.concat(chunks, chunklen)];
         }
         expected = chunks[0].readUInt16BE(0);
       }
@@ -1197,13 +1256,10 @@ Packet.readStream = socket => {
  * DoH
  * @docs https://tools.ietf.org/html/rfc8484
  */
-Packet.prototype.toBase64URL = function() {
+Packet.prototype.toBase64URL = function () {
   const buffer = this.toBuffer();
   const base64 = buffer.toString('base64');
-  return base64
-    .replace(/=/g, '')
-    .replace(/\+/g, '-')
-    .replace(/\//g, '_');
+  return base64.replace(/=/g, '').replace(/\+/g, '-').replace(/\//g, '_');
 };
 
 module.exports = Packet;

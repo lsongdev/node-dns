@@ -1,4 +1,4 @@
-# dns2 
+# dns2
 
 ![NPM version][npm-img] [![Build Status][ci-img]][ci-url]
 
@@ -6,10 +6,10 @@
 
 ### Features
 
-+ Server and Client
-+ Lot of Type Supported
-+ Extremely lightweight
-+ DNS over UDP, TCP, HTTPS Supported
+- Server and Client
+- Lot of Type Supported
+- Extremely lightweight
+- DNS over UDP, TCP, HTTPS Supported
 
 ### Installation
 
@@ -19,7 +19,7 @@ $ npm install dns2
 
 ### DNS Client (default UDP)
 
-Lookup any records available for the domain `lsong.org`. 
+Lookup any records available for the domain `lsong.org`.
 DNS client will use UDP by default.
 
 ```js
@@ -40,16 +40,16 @@ const dns = new dns2(options);
 
 The high-level `DNS` class exposes convenience methods for common record types:
 
-| Method | Record type | Key answer fields |
-|---|---|---|
-| `resolveA(domain)` | A | `address` |
-| `resolveAAAA(domain)` | AAAA | `address` |
-| `resolveMX(domain)` | MX | `exchange`, `priority` |
-| `resolveCNAME(domain)` | CNAME | `domain` |
-| `resolveSOA(domain)` | SOA | `primary`, `admin`, `serial`, `refresh`, `retry`, `expiration`, `minimum` |
-| `resolvePTR(domain)` | PTR | `domain` |
-| `resolveDNSKEY(domain)` | DNSKEY | `publicKey`, `algorithm` |
-| `resolveRRSIG(domain)` | RRSIG | varies |
+| Method                  | Record type | Key answer fields                                                         |
+| ----------------------- | ----------- | ------------------------------------------------------------------------- |
+| `resolveA(domain)`      | A           | `address`                                                                 |
+| `resolveAAAA(domain)`   | AAAA        | `address`                                                                 |
+| `resolveMX(domain)`     | MX          | `exchange`, `priority`                                                    |
+| `resolveCNAME(domain)`  | CNAME       | `domain`                                                                  |
+| `resolveSOA(domain)`    | SOA         | `primary`, `admin`, `serial`, `refresh`, `retry`, `expiration`, `minimum` |
+| `resolvePTR(domain)`    | PTR         | `domain`                                                                  |
+| `resolveDNSKEY(domain)` | DNSKEY      | `publicKey`, `algorithm`                                                  |
+| `resolveRRSIG(domain)`  | RRSIG       | varies                                                                    |
 
 For any record type not listed above, use `dns.resolve(domain, 'TYPE')` directly.
 
@@ -68,13 +68,13 @@ const dns = new dns2({ nameServers: ['8.8.8.8'] });
   const result = await dns.resolveSOA('google.com');
   const soa = result.answers[0] || result.authorities[0];
   if (soa) {
-    console.log(soa.primary);     // ns1.google.com
-    console.log(soa.admin);       // dns-admin.google.com
-    console.log(soa.serial);      // zone serial number
-    console.log(soa.refresh);     // refresh interval (seconds)
-    console.log(soa.retry);       // retry interval (seconds)
-    console.log(soa.expiration);  // expiry (seconds)
-    console.log(soa.minimum);     // minimum TTL (seconds)
+    console.log(soa.primary); // ns1.google.com
+    console.log(soa.admin); // dns-admin.google.com
+    console.log(soa.serial); // zone serial number
+    console.log(soa.refresh); // refresh interval (seconds)
+    console.log(soa.retry); // retry interval (seconds)
+    console.log(soa.expiration); // expiry (seconds)
+    console.log(soa.minimum); // minimum TTL (seconds)
   }
 })();
 ```
@@ -87,7 +87,7 @@ const { UDPClient } = require('dns2');
 const resolve = UDPClient();
 
 (async () => {
-  const response = await resolve('google.com')
+  const response = await resolve('google.com');
   console.log(response.answers);
 })();
 ```
@@ -103,10 +103,10 @@ const resolve = TCPClient();
 
 (async () => {
   try {
-    const response = await resolve('lsong.org')
+    const response = await resolve('lsong.org');
     console.log(response.answers);
-  } catch(error) {
-    // some DNS servers (i.e cloudflare 1.1.1.1, 1.0.0.1) 
+  } catch (error) {
+    // some DNS servers (i.e cloudflare 1.1.1.1, 1.0.0.1)
     // may send an empty response when using TCP
     console.log(error);
   }
@@ -121,14 +121,14 @@ You can pass your own DNS Server.
 const { TCPClient } = require('dns2');
 
 const resolve = TCPClient({
-  dns: '1.1.1.1'
+  dns: '1.1.1.1',
 });
 
 (async () => {
   try {
     const result = await resolve('google.com');
     console.log(result.answers);
-  } catch(error) {
+  } catch (error) {
     console.log(error);
   }
 })();
@@ -143,14 +143,14 @@ const dns = require('dns');
 const { TCPClient } = require('dns2');
 
 const resolve = TCPClient({
-  dns: dns.getServers()[0]
+  dns: dns.getServers()[0],
 });
 
 (async () => {
   try {
     const result = await resolve('google.com');
     console.log(result.answers);
-  } catch(error) {
+  } catch (error) {
     console.log(error);
   }
 })();
@@ -167,24 +167,24 @@ const server = dns2.createServer({
   udp: true,
   handle: (request, send, rinfo) => {
     const response = Packet.createResponseFromRequest(request);
-    const [ question ] = request.questions;
+    const [question] = request.questions;
     const { name } = question;
     response.answers.push({
       name,
       type: Packet.TYPE.A,
       class: Packet.CLASS.IN,
       ttl: 300,
-      address: '8.8.8.8'
+      address: '8.8.8.8',
     });
     send(response);
-  }
+  },
 });
 
 server.on('request', (request, response, rinfo) => {
   console.log(request.header.id, request.questions[0]);
 });
 
-server.on('requestError', (error) => {
+server.on('requestError', error => {
   console.log('Client sent an invalid request', error);
 });
 
@@ -198,15 +198,15 @@ server.on('close', () => {
 
 server.listen({
   // Optionally specify port, address and/or the family of socket() for udp server:
-  udp: { 
+  udp: {
     port: 5333,
-    address: "127.0.0.1",
+    address: '127.0.0.1',
   },
-  
+
   // Optionally specify port and/or address for tcp server:
-  tcp: { 
+  tcp: {
     port: 5333,
-    address: "127.0.0.1",
+    address: '127.0.0.1',
   },
 });
 
@@ -227,14 +227,14 @@ will be found in `request.questions[0].name`.
 
 Use `Packet.RCODE` to send standard DNS error responses from your handler:
 
-| Constant | Value | Meaning |
-|---|---|---|
-| `Packet.RCODE.NOERROR`  | 0 | No error |
-| `Packet.RCODE.FORMERR`  | 1 | Format error |
-| `Packet.RCODE.SERVFAIL` | 2 | Server failure |
-| `Packet.RCODE.NXDOMAIN` | 3 | Non-existent domain |
-| `Packet.RCODE.NOTIMP`   | 4 | Not implemented |
-| `Packet.RCODE.REFUSED`  | 5 | Query refused |
+| Constant                | Value | Meaning             |
+| ----------------------- | ----- | ------------------- |
+| `Packet.RCODE.NOERROR`  | 0     | No error            |
+| `Packet.RCODE.FORMERR`  | 1     | Format error        |
+| `Packet.RCODE.SERVFAIL` | 2     | Server failure      |
+| `Packet.RCODE.NXDOMAIN` | 3     | Non-existent domain |
+| `Packet.RCODE.NOTIMP`   | 4     | Not implemented     |
+| `Packet.RCODE.REFUSED`  | 5     | Query refused       |
 
 ```js
 const dns2 = require('dns2');
@@ -244,7 +244,7 @@ const server = dns2.createServer({
   udp: true,
   handle: (request, send) => {
     const response = Packet.createResponseFromRequest(request);
-    const [ question ] = request.questions;
+    const [question] = request.questions;
 
     if (question.name.endsWith('.internal')) {
       // Refuse queries for internal names
@@ -259,9 +259,15 @@ const server = dns2.createServer({
     }
 
     // Normal answer ...
-    response.answers.push({ name: question.name, type: Packet.TYPE.A, class: Packet.CLASS.IN, ttl: 300, address: '1.2.3.4' });
+    response.answers.push({
+      name: question.name,
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 300,
+      address: '1.2.3.4',
+    });
     send(response);
-  }
+  },
 });
 ```
 
@@ -271,11 +277,11 @@ see [benchmark/README.md](benchmark/README.md)
 
 ### Relevant Specifications
 
-+ [RFC-1034 - Domain Names - Concepts and Facilities](https://tools.ietf.org/html/rfc1034)
-+ [RFC-1035 - Domain Names - Implementation and Specification](https://tools.ietf.org/html/rfc1035)
-+ [RFC-2782 - A DNS RR for specifying the location of services (DNS SRV)](https://tools.ietf.org/html/rfc2782)
-+ [RFC-7766 - DNS Transport over TCP - Implementation Requirements](https://tools.ietf.org/html/rfc7766)
-+ [RFC-8484 - DNS Queries over HTTPS (DoH)](https://tools.ietf.org/html/rfc8484)
+- [RFC-1034 - Domain Names - Concepts and Facilities](https://tools.ietf.org/html/rfc1034)
+- [RFC-1035 - Domain Names - Implementation and Specification](https://tools.ietf.org/html/rfc1035)
+- [RFC-2782 - A DNS RR for specifying the location of services (DNS SRV)](https://tools.ietf.org/html/rfc2782)
+- [RFC-7766 - DNS Transport over TCP - Implementation Requirements](https://tools.ietf.org/html/rfc7766)
+- [RFC-8484 - DNS Queries over HTTPS (DoH)](https://tools.ietf.org/html/rfc8484)
 
 ### Contributing
 
