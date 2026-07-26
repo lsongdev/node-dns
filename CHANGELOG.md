@@ -4,7 +4,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Unreleased
 
-### [3.1.0] - 2026-07-26
+### [3.1.1] - 2026-07-26
 
 - chore: declare Node.js 22 as the floor
 - feat(packet): Extended DNS Errors (RFC 8914) — `Packet.EDE` INFO-CODEs, an EDE
@@ -109,4 +109,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 [2.3.0]: https://github.com/lsongdev/node-dns/releases/tag/v2.3.0
 [2.2.0]: https://github.com/lsongdev/node-dns/releases/tag/v2.2.0
 [2.2.1]: https://github.com/lsongdev/node-dns/releases/tag/v2.2.1
-[3.1.0]: https://github.com/lsongdev/node-dns/releases/tag/v3.1.0
+[3.1.1]: https://github.com/lsongdev/node-dns/releases/tag/v3.1.1

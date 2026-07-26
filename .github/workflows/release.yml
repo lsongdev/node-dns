@@ -17,13 +17,23 @@ jobs:
     steps:
       - uses: actions/checkout@v6
         with:
-          fetch-depth: 2 # last 2 commits
+          fetch-depth: 0 # need every commit in the pushed range
       - name: check version change
         id: check
+        env:
+          BEFORE: ${{ github.event.before }}
         run: |
-          PREV_VERSION=$(git show HEAD^:package.json | jq -r .version)
           CURR_VERSION=$(jq -r .version package.json)
-          echo "Previous: $PREV_VERSION"
+          # Compare against where the branch pointed before this push
+          if [ -z "$BEFORE" ] \
+            || [ "$BEFORE" = "0000000000000000000000000000000000000000" ] \
+            || ! git cat-file -e "$BEFORE^{commit}" 2>/dev/null; then
+            # New branch, force push, or a baseline that no longer exists:
+            PREV_VERSION=""
+          else
+            PREV_VERSION=$(git show "$BEFORE:package.json" | jq -r .version)
+          fi
+          echo "Previous: ${PREV_VERSION:-<unknown>}"
           echo "Current:  $CURR_VERSION"
           if [ "$PREV_VERSION" != "$CURR_VERSION" ]; then
             echo "changed=true" >> $GITHUB_OUTPUT
@@ -51,6 +61,9 @@ jobs:
     runs-on: ubuntu-latest
     permissions:
       contents: write # needed to create tags and releases
+    outputs:
+      # Exposed so publish can skip an already-released version
+      tagged: ${{ steps.tag-check.outputs.exists == 'false' }}
     steps:
       - uses: actions/checkout@v6
         with:
@@ -80,6 +93,7 @@ jobs:
 
   publish:
     needs: release
+    if: needs.release.outputs.tagged == 'true'
     runs-on: ubuntu-latest
     permissions:
       contents: read
