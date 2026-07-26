@@ -1086,10 +1086,9 @@ test('server/udp#proxyProtocol exposes real client address (v2 IPv4)', async () 
 
 test('server/udp#proxyProtocol with missing header emits requestError', async () => {
   const server = createUDPServer({ proxyProtocol: true });
-  let captured;
-  server.on('requestError', e => {
-    captured = e;
-  });
+  const requestError = new Promise(resolve =>
+    server.once('requestError', resolve),
+  );
   await server.listen(0, '127.0.0.1');
   const { port: serverPort } = server.address();
 
@@ -1105,11 +1104,9 @@ test('server/udp#proxyProtocol with missing header emits requestError', async ()
   await new Promise(resolve =>
     sender.send(query.toBuffer(), serverPort, '127.0.0.1', resolve),
   );
-  // Give the server a moment to handle the datagram.
-  await new Promise(resolve => setTimeout(resolve, 20));
+  const captured = await requestError;
   await new Promise(resolve => sender.close(resolve));
 
-  assert.ok(captured, 'expected requestError to fire');
   assert.match(captured.message, /PROXY/);
   await new Promise(resolve => server.close(resolve));
 });
@@ -1220,10 +1217,9 @@ test('server/tcp#proxyProtocol v2 exposes real client address', async () => {
 
 test('server/tcp#proxyProtocol with garbage prefix emits requestError', async () => {
   const server = createTCPServer({ proxyProtocol: true });
-  let captured;
-  server.on('requestError', e => {
-    captured = e;
-  });
+  const requestError = new Promise(resolve =>
+    server.once('requestError', resolve),
+  );
   await new Promise(resolve => server.listen(0, '127.0.0.1', resolve));
   const { port: serverPort } = server.address();
 
@@ -1234,10 +1230,8 @@ test('server/tcp#proxyProtocol with garbage prefix emits requestError', async ()
     sock.on('close', resolve);
     sock.on('error', reject);
   });
-  // Give the server an event-loop tick to surface the error.
-  await new Promise(resolve => setTimeout(resolve, 20));
+  const captured = await requestError;
 
-  assert.ok(captured, 'expected requestError to fire');
   assert.match(captured.message, /PROXY/);
   await new Promise(resolve => server.close(resolve));
 });
@@ -1292,6 +1286,11 @@ test('server#requestError explains why a query could not be decoded', async () =
   const servers = await server.listen();
   const errors = [];
   server.on('requestError', e => errors.push(e));
+  // Await the event rather than sleeping a fixed interval, which a loaded
+  // machine can outrun. If it never arrives the per-test timeout says so.
+  const firstError = new Promise(resolve =>
+    server.once('requestError', resolve),
+  );
 
   // 8 octets: enough to look like traffic, too few to hold a DNS header.
   const socket = udp.createSocket('udp4');
@@ -1300,15 +1299,11 @@ test('server#requestError explains why a query could not be decoded', async () =
       socket.close(resolve),
     ),
   );
-  // Give the server a turn to process the datagram.
-  await new Promise(resolve => setTimeout(resolve, 50));
 
-  assert.equal(errors.length, 1);
-  assert.ok(errors[0] instanceof Packet.DecodeError);
-  assert.match(
-    errors[0].message,
-    /8 octets, too short for the 12-octet header/,
-  );
+  const error = await firstError;
+  assert.ok(error instanceof Packet.DecodeError);
+  assert.match(error.message, /8 octets, too short for the 12-octet header/);
+  assert.equal(errors.length, 1, 'one datagram produced one error');
 
   await server.close();
 });
