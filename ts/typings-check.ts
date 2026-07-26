@@ -64,6 +64,45 @@ for (const err of decodeErrors) {
 }
 const _isDecodeError: boolean = decodeErrors[0] instanceof Packet.DecodeError;
 const _typeName: string = Packet.typeName(Packet.TYPE.RRSIG);
+const _rcode: number = Packet.RCODE.FORMERR;
+const _badvers: number = Packet.RCODE.BADVERS;
+const _edeInvalidData: number = Packet.EDE.INVALID_DATA;
+const _edeName: string | undefined = Packet.EDE_NAME[24];
+const _edeMaxText: number = Packet.EDE_MAX_TEXT;
+
+// Extended DNS Errors: build one, and read one back off a response.
+const _formErr: DNS.Packet = Packet.createErrorResponseFromRequest(
+  parsed,
+  Packet.RCODE.FORMERR,
+  {
+    infoCode: Packet.EDE.INVALID_DATA,
+    extraText: parsed.errors.map(e => e.message).join('; '),
+  },
+);
+const _refused: DNS.Packet = Packet.createErrorResponseFromRequest(
+  parsed,
+  Packet.RCODE.REFUSED,
+);
+const _optRecord: DNS.Packet.Resource | undefined = _formErr.additionals.find(
+  r => r.type === Packet.TYPE.EDNS,
+);
+for (const option of _optRecord?.rdata ?? []) {
+  const _code: number = option.ednsCode;
+  if (option.ednsCode === Packet.EDNS_OPTION_CODE.EDE) {
+    const ede = option as DNS.Packet.EdeOption;
+    const _info: number = ede.infoCode;
+    const _text: string = ede.extraText;
+  }
+}
+const _ede: DNS.Packet.EdeOption = Packet.Resource.EDNS.EDE(
+  Packet.EDE.BLOCKED,
+  'why',
+);
+const _ecs: DNS.Packet.EcsOption = Packet.Resource.EDNS.ECS('1.2.3.4/24');
+const _opt: DNS.Packet.Resource = Packet.Resource.EDNS([_ede, _ecs], {
+  udpPayloadSize: 1232,
+  doFlag: true,
+});
 const _headerSize: number = Packet.HEADER_SIZE;
 const _typeOfCode: string | undefined = Packet.TYPE_NAME[1];
 const _ednsOptionName: string | undefined = Packet.EDNS_OPTION_NAME[8];

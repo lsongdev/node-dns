@@ -1380,3 +1380,57 @@ test('client/tcp#reports a reply that is cut short', async () => {
   );
   await new Promise(done => rude.close(done));
 });
+
+test('server#answers a malformed query with FORMERR and an EDE reason', async () => {
+  // End-to-end: a query whose additional record is malformed comes back as
+  // FORMERR carrying an RFC 8914 Extended DNS Error naming the reason.
+  const server = createUDPServer((request, send) => {
+    if (request.errors.length) {
+      return send(
+        Packet.createErrorResponseFromRequest(request, Packet.RCODE.FORMERR, {
+          infoCode: Packet.EDE.INVALID_DATA,
+          extraText: request.errors.map(e => e.message).join('; '),
+        }),
+      );
+    }
+    send(Packet.createResponseFromRequest(request));
+  });
+  await server.listen(0, '127.0.0.1');
+  const { port } = server.address();
+
+  const query = new Packet();
+  query.header.id = 0x7f7f;
+  query.questions.push({
+    name: 'formerr.test',
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
+  });
+  query.additionals.push(Packet.Resource.EDNS([]));
+  // Append an AAAA record declaring 4 octets of rdata but carrying none.
+  const malformed = Buffer.concat([
+    query.toBuffer(),
+    Buffer.from([
+      0x00, 0x00, 0x1c, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x04,
+    ]),
+  ]);
+  malformed.writeUInt16BE(2, 10); // arcount: the OPT plus the broken record
+
+  const socket = udp.createSocket('udp4');
+  const reply = new Promise(resolve =>
+    socket.on('message', msg => resolve(Packet.parse(msg))),
+  );
+  socket.send(malformed, port, '127.0.0.1');
+  const response = await reply;
+  socket.close();
+
+  assert.equal(response.header.id, 0x7f7f);
+  assert.equal(response.header.rcode, Packet.RCODE.FORMERR);
+  const opt = response.additionals.find(r => r.type === Packet.TYPE.EDNS);
+  assert.ok(opt, 'response carries an OPT');
+  const [ede] = opt.rdata;
+  assert.equal(ede.ednsCode, Packet.EDNS_OPTION_CODE.EDE);
+  assert.equal(Packet.EDE_NAME[ede.infoCode], 'INVALID_DATA');
+  assert.match(ede.extraText, /RDLENGTH 4 but only 0 octet\(s\) remain/);
+
+  await new Promise(resolve => server.close(resolve));
+});

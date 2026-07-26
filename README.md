@@ -122,6 +122,60 @@ dns2
   .on('requestError', err => console.error('undecodable query:', err.message));
 ```
 
+#### Telling the client why: Extended DNS Errors
+
+`FORMERR` says "malformed" in four bits and nothing more. RFC 8914 Extended DNS
+Errors add an EDNS option carrying an INFO-CODE plus free-form text, which is
+where a decode reason belongs. `Packet.EDE.INVALID_DATA` (24) is the code for
+data that could not be interpreted.
+
+`Packet.createErrorResponseFromRequest` composes the whole reply:
+
+```js
+const server = dns2.createServer({
+  udp: true,
+  handle: (request, send) => {
+    if (request.errors.length) {
+      return send(
+        Packet.createErrorResponseFromRequest(request, Packet.RCODE.FORMERR, {
+          infoCode: Packet.EDE.INVALID_DATA,
+          extraText: request.errors.map(e => e.message).join('; '),
+        }),
+      );
+    }
+    // ... normal handling
+  },
+});
+```
+
+A client reads it back off any response:
+
+```js
+const response = await resolve('example.com');
+const opt = response.additionals.find(r => r.type === Packet.TYPE.EDNS);
+for (const option of opt?.rdata ?? []) {
+  if (option.ednsCode !== Packet.EDNS_OPTION_CODE.EDE) continue;
+  console.error(
+    `${Packet.EDE_NAME[option.infoCode] ?? option.infoCode}: ${option.extraText}`,
+  );
+  // "INVALID_DATA: answers[0] at offset 12: TXT decode: character-string ..."
+}
+```
+
+Extended errors are additive — they annotate a response without changing its
+RCODE, and appear on `NOERROR` responses too. Three details the builder handles:
+
+- The option is attached **only when the request carried an OPT record**
+  (RFC 8914 §3), since a client that didn't signal EDNS cannot be sent EDNS
+  options. A request too malformed to have a readable OPT gets a bare RCODE.
+- An OPT is added regardless when the RCODE exceeds 15, so its high byte
+  survives serialization — otherwise `BADVERS` would go out as `NOERROR`.
+- `extraText` is truncated to `Packet.EDE_MAX_TEXT` (256), because the reply
+  still has to fit the negotiated UDP payload size.
+
+`Packet.EDE` holds the full registry of INFO-CODEs and `Packet.EDE_NAME` maps a
+received code back to its name.
+
 #### Example: SOA record lookup
 
 SOA (Start of Authority) records contain the authoritative zone information for a domain.
@@ -296,14 +350,35 @@ will be found in `request.questions[0].name`.
 
 Use `Packet.RCODE` to send standard DNS error responses from your handler:
 
-| Constant                | Value | Meaning             |
-| ----------------------- | ----- | ------------------- |
-| `Packet.RCODE.NOERROR`  | 0     | No error            |
-| `Packet.RCODE.FORMERR`  | 1     | Format error        |
-| `Packet.RCODE.SERVFAIL` | 2     | Server failure      |
-| `Packet.RCODE.NXDOMAIN` | 3     | Non-existent domain |
-| `Packet.RCODE.NOTIMP`   | 4     | Not implemented     |
-| `Packet.RCODE.REFUSED`  | 5     | Query refused       |
+| Constant                 | Value | Meaning                            |
+| ------------------------ | ----- | ---------------------------------- |
+| `Packet.RCODE.NOERROR`   | 0     | No error                           |
+| `Packet.RCODE.FORMERR`   | 1     | Format error                       |
+| `Packet.RCODE.SERVFAIL`  | 2     | Server failure                     |
+| `Packet.RCODE.NXDOMAIN`  | 3     | Non-existent domain                |
+| `Packet.RCODE.NOTIMP`    | 4     | Not implemented                    |
+| `Packet.RCODE.REFUSED`   | 5     | Query refused                      |
+| `Packet.RCODE.YXDOMAIN`  | 6     | Name exists when it should not     |
+| `Packet.RCODE.YXRRSET`   | 7     | RRset exists when it should not    |
+| `Packet.RCODE.NXRRSET`   | 8     | RRset that should exist does not   |
+| `Packet.RCODE.NOTAUTH`   | 9     | Not authoritative / not authorized |
+| `Packet.RCODE.NOTZONE`   | 10    | Name not contained in zone         |
+| `Packet.RCODE.DSOTYPENI` | 11    | DSO-TYPE not implemented           |
+| `Packet.RCODE.BADVERS`   | 16    | Bad OPT version                    |
+| `Packet.RCODE.BADSIG`    | 16    | TSIG signature failure             |
+| `Packet.RCODE.BADKEY`    | 17    | Key not recognized                 |
+| `Packet.RCODE.BADTIME`   | 18    | Signature out of time window       |
+| `Packet.RCODE.BADMODE`   | 19    | Bad TKEY mode                      |
+| `Packet.RCODE.BADNAME`   | 20    | Duplicate key name                 |
+| `Packet.RCODE.BADALG`    | 21    | Algorithm not supported            |
+| `Packet.RCODE.BADTRUNC`  | 22    | Bad truncation                     |
+| `Packet.RCODE.BADCOOKIE` | 23    | Bad or missing server cookie       |
+
+Codes above 15 do not fit the header's 4-bit RCODE field — their high byte
+travels in an OPT record's TTL (RFC 6891 §6.1.3), so a response using one must
+carry an OPT. `Packet.createErrorResponseFromRequest` attaches one for you.
+Note that 16 has two names in the IANA registry: they share the code point on
+the wire, and only context distinguishes them.
 
 ```js
 const dns2 = require('dns2');

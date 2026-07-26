@@ -174,6 +174,28 @@ Packet.RCODE = {
   NXDOMAIN: 3,
   NOTIMP: 4,
   REFUSED: 5,
+  YXDOMAIN: 6,
+  YXRRSET: 7,
+  NXRRSET: 8,
+  NOTAUTH: 9,
+  NOTZONE: 10,
+  DSOTYPENI: 11,
+  // Codes above 15 do not fit the header's 4-bit RCODE field: the high byte
+  // travels in an OPT record's TTL (RFC 6891 §6.1.3), so a response using one
+  // MUST carry an OPT. Packet.toBuffer performs that split.
+  //
+  // 16 has two assignments in the IANA registry — BADVERS for an unsupported
+  // EDNS version (RFC 6891) and BADSIG for a TSIG failure (RFC 8945). They
+  // share the code point on the wire; only context tells them apart.
+  BADVERS: 16,
+  BADSIG: 16,
+  BADKEY: 17,
+  BADTIME: 18,
+  BADMODE: 19,
+  BADNAME: 20,
+  BADALG: 21,
+  BADTRUNC: 22,
+  BADCOOKIE: 23,
 };
 /**
  * [EDNS_OPTION_CODE description]
@@ -182,7 +204,60 @@ Packet.RCODE = {
  */
 Packet.EDNS_OPTION_CODE = {
   ECS: 0x08,
+  EDE: 0x0f,
 };
+/**
+ * Extended DNS Error INFO-CODEs. These explain a response; they do not replace
+ * its RCODE. Codes past 24 are later registry additions, some originating from
+ * drafts or vendor implementations rather than a published RFC.
+ * @type {Object}
+ * @docs https://tools.ietf.org/html/rfc8914#section-4
+ * @docs https://www.iana.org/assignments/dns-parameters/dns-parameters.xhtml#extended-dns-error-codes
+ */
+Packet.EDE = {
+  OTHER: 0,
+  UNSUPPORTED_DNSKEY_ALGORITHM: 1,
+  UNSUPPORTED_DS_DIGEST_TYPE: 2,
+  STALE_ANSWER: 3,
+  FORGED_ANSWER: 4,
+  DNSSEC_INDETERMINATE: 5,
+  DNSSEC_BOGUS: 6,
+  SIGNATURE_EXPIRED: 7,
+  SIGNATURE_NOT_YET_VALID: 8,
+  DNSKEY_MISSING: 9,
+  RRSIGS_MISSING: 10,
+  NO_ZONE_KEY_BIT_SET: 11,
+  NSEC_MISSING: 12,
+  CACHED_ERROR: 13,
+  NOT_READY: 14,
+  BLOCKED: 15,
+  CENSORED: 16,
+  FILTERED: 17,
+  PROHIBITED: 18,
+  STALE_NXDOMAIN_ANSWER: 19,
+  NOT_AUTHORITATIVE: 20,
+  NOT_SUPPORTED: 21,
+  NO_REACHABLE_AUTHORITY: 22,
+  NETWORK_ERROR: 23,
+  INVALID_DATA: 24,
+  SIGNATURE_EXPIRED_BEFORE_VALID: 25,
+  TOO_EARLY: 26,
+  UNSUPPORTED_NSEC3_ITERATIONS: 27,
+  UNABLE_TO_CONFORM_TO_POLICY: 28,
+  SYNTHESIZED: 29,
+  INVALID_QUERY_TYPE: 30,
+  RATE_LIMITED: 31,
+  OVER_QUOTA: 32,
+  NEGATIVE_TRUST_ANCHOR: 33,
+  NEW_DELEGATION_ONLY: 34,
+};
+/**
+ * Reverse of Packet.EDE, for naming a received INFO-CODE in diagnostics.
+ * @type {Object}
+ */
+Packet.EDE_NAME = Object.fromEntries(
+  Object.entries(Packet.EDE).map(([name, code]) => [code, name]),
+);
 /**
  * Reverse of Packet.EDNS_OPTION_CODE.
  * @type {Object}
@@ -1229,6 +1304,52 @@ function expandIPv6ToBytes(address) {
   return out;
 }
 
+// RFC 8914 §3 — EXTRA-TEXT should stay short. It shares the response with the
+// answer, which still has to fit the negotiated UDP payload size.
+Packet.EDE_MAX_TEXT = 256;
+
+/**
+ * Extended DNS Error — an INFO-CODE naming the category of failure plus
+ * free-form UTF-8 text explaining it. Additive: it annotates a response
+ * without changing its RCODE.
+ * @docs https://tools.ietf.org/html/rfc8914
+ */
+Packet.Resource.EDNS.EDE = function (infoCode, extraText = '') {
+  return {
+    ednsCode: Packet.EDNS_OPTION_CODE.EDE,
+    infoCode,
+    extraText,
+  };
+};
+
+Packet.Resource.EDNS.EDE.decode = function (reader, length) {
+  // RFC 8914 §2 — 16-bit INFO-CODE, then optional EXTRA-TEXT to the end of
+  // the option.
+  if (length < 2) {
+    throw new Error(
+      `EDNS.EDE decode: option is ${length} octet(s), expected at least 2`,
+    );
+  }
+  const infoCode = reader.read(16);
+  const bytes = Buffer.alloc(length - 2);
+  for (let i = 0; i < bytes.length; i++) bytes[i] = reader.read(8);
+  return {
+    ednsCode: Packet.EDNS_OPTION_CODE.EDE,
+    infoCode,
+    // §3 warns that EXTRA-TEXT must not be assumed null-terminated; senders
+    // that terminate it anyway would otherwise leave NULs in the string.
+    extraText: bytes.toString('utf8').replace(/\0+$/, ''),
+  };
+};
+
+Packet.Resource.EDNS.EDE.encode = function (record, writer) {
+  assertCode(record.infoCode, 'infoCode', 'EDNS.EDE encode');
+  writer.write(record.infoCode, 16);
+  for (const byte of Buffer.from(record.extraText || '', 'utf8')) {
+    writer.write(byte, 8);
+  }
+};
+
 Packet.Resource.CAA = {
   encode: function (record, writer) {
     writer = writer || new Packet.Writer();
@@ -1397,6 +1518,47 @@ Packet.createResourceFromQuestion = function (base, record) {
   const resource = new Packet.Resource(base);
   Object.assign(resource, record);
   return resource;
+};
+
+/**
+ * Build an error response for a request, optionally explaining why with an
+ * RFC 8914 Extended DNS Error.
+ *
+ * For a request that only partly decoded, the reason is already to hand:
+ *
+ *   Packet.createErrorResponseFromRequest(request, Packet.RCODE.FORMERR, {
+ *     infoCode: Packet.EDE.INVALID_DATA,
+ *     extraText: request.errors.map(e => e.message).join('; '),
+ *   });
+ *
+ * @param  {Packet} request
+ * @param  {number} rcode
+ * @param  {{infoCode: number, extraText?: string}} [ede]
+ * @return {Packet}
+ */
+Packet.createErrorResponseFromRequest = function (request, rcode, ede) {
+  const response = Packet.createResponseFromRequest(request);
+  response.header.rcode = rcode;
+  const requestOpt = (request.additionals || []).find(
+    r => r && r.type === Packet.TYPE.EDNS,
+  );
+  // An OPT belongs in the response when the request signalled EDNS
+  // (RFC 6891 §6.1.1), and is *required* for an RCODE above 15, whose high
+  // byte rides in the OPT TTL — without one only the low nibble survives, and
+  // BADVERS would go out as NOERROR.
+  if (!requestOpt && rcode <= 0xf) return response;
+  const rdata = [];
+  // RFC 8914 §3: extended errors belong only in responses to EDNS requests.
+  if (ede && requestOpt) {
+    rdata.push(
+      Packet.Resource.EDNS.EDE(
+        ede.infoCode,
+        String(ede.extraText ?? '').slice(0, Packet.EDE_MAX_TEXT),
+      ),
+    );
+  }
+  response.additionals.push(Packet.Resource.EDNS(rdata));
+  return response;
 };
 
 /**

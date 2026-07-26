@@ -52,3 +52,6 @@ export type Resource = DNS.Packet.Resource;
 export type Reader = DNS.Packet.Reader;
 export type Writer = DNS.Packet.Writer;
 export type DecodeError = DNS.Packet.DecodeError;
+export type EdnsOption = DNS.Packet.EdnsOption;
+export type EcsOption = DNS.Packet.EcsOption;
+export type EdeOption = DNS.Packet.EdeOption;
