@@ -34,6 +34,7 @@ import type {
   Header,
   Question,
   Resource,
+  DecodeError,
   DnsHandler,
   DnsResolver,
   ServerAddresses,
@@ -90,6 +91,9 @@ pkt.header.id = 0xabcd;
 pkt.questions.push(new Packet.Question('esm.test', Packet.TYPE.A, Packet.CLASS.IN));
 const buf: Buffer = pkt.toBuffer();
 const parsed: Packet = Packet.parse(buf);
+
+const decodeErrors: DecodeError[] = parsed.errors;
+void decodeErrors.map(e => `${e.section}: ${e.message} (recovered=${e.recovered})`);
 
 const hdr: Header = parsed.header;
 const q: Question = parsed.questions[0];

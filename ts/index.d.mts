@@ -51,3 +51,4 @@ export type Question = DNS.Packet.Question;
 export type Resource = DNS.Packet.Resource;
 export type Reader = DNS.Packet.Reader;
 export type Writer = DNS.Packet.Writer;
+export type DecodeError = DNS.Packet.DecodeError;

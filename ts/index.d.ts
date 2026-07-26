@@ -50,6 +50,11 @@ declare namespace DNS {
     authorities: Packet.Resource[];
     additionals: Packet.Resource[];
     recursive: boolean;
+    /**
+     * One entry per record Packet.parse could not decode; empty for messages
+     * built in memory or decoded cleanly.
+     */
+    errors: Packet.DecodeError[];
 
     constructor(
       data?: Packet | Packet.Header | Packet.Question | Packet.Resource | string | any[],
@@ -80,6 +85,7 @@ declare namespace DNS {
       AAAA   : 0x1c;
       SRV    : 0x21;
       EDNS   : 0x29;
+      RRSIG  : 0x2e;
       SPF    : 0x63;
       AXFR   : 0xfc;
       MAILB  : 0xfd;
@@ -101,9 +107,28 @@ declare namespace DNS {
       ECS: 0x08;
     };
 
+    /** Octets in a DNS message header. */
+    static HEADER_SIZE: 12;
+
+    /** Reverse of Packet.TYPE, keyed by type code. */
+    static TYPE_NAME: Record<number, string>;
+
+    /** Reverse of Packet.EDNS_OPTION_CODE, keyed by option code. */
+    static EDNS_OPTION_NAME: Record<number, string>;
+
     // ── Static helpers ──────────────────────────────────────────────────────
 
+    /**
+     * Decode a DNS message. Throws Packet.DecodeError when the message has no
+     * usable header; per-record failures are reported on the returned packet's
+     * `errors` array.
+     */
     static parse(buffer: Buffer): Packet;
+    static typeName(code: number): string;
+    static DecodeError: {
+      new(message: string, context?: Partial<Packet.DecodeError>): Packet.DecodeError;
+      prototype: Packet.DecodeError;
+    };
     static createResponseFromRequest(request: Packet): Packet;
     static createResourceFromQuestion(
       base: Packet.Question,
@@ -219,15 +244,33 @@ declare namespace DNS {
       toBuffer(writer?: Writer): Buffer;
     }
 
+    /** A record, question, or message that could not be decoded. */
+    interface DecodeError extends Error {
+      /** questions / answers / authorities / additionals */
+      section?: string;
+      /** Position of the record within its section. */
+      index?: number;
+      /** Octet offset in the message where the record started. */
+      offset?: number;
+      /** Whether decoding resumed after this failure. */
+      recovered: boolean;
+    }
+
     interface Reader {
+      buffer: Buffer;
       offset: number;
       read(bits: number): number;
+      /** Bits left between the cursor and the end of the message. */
+      remaining(): number;
     }
 
     interface Writer {
       buffer: number[];
       write(value: number, bits: number): void;
       writeBuffer(writer: Writer): void;
+      bitLength(): number;
+      byteLength(): number;
+      patch(bitOffset: number, value: number, bits: number): void;
       toBuffer(): Buffer;
     }
   }
@@ -297,7 +340,9 @@ declare namespace DNS {
 
   interface ClientOptions {
     port: number;
+    /** Reserved; not yet honoured by `resolve()`. */
     retries: number;
+    /** Per-name-server query timeout in milliseconds. Default: `3000`. */
     timeout: number;
     recursive: boolean;
     /** When using UDP and the TC (truncated) bit is set, automatically retry over TCP. Default: `true`. */

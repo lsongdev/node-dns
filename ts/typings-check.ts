@@ -53,6 +53,21 @@ const parsed: DNS.Packet = Packet.parse(buf);
 const response: DNS.Packet = Packet.createResponseFromRequest(parsed);
 response.header.rcode = 3; // NXDOMAIN
 
+// Decode failures are reported per record, not thrown, once the header parses.
+const decodeErrors: DNS.Packet.DecodeError[] = parsed.errors;
+for (const err of decodeErrors) {
+  const _section: string | undefined = err.section;
+  const _index: number | undefined = err.index;
+  const _offset: number | undefined = err.offset;
+  const _recovered: boolean = err.recovered;
+  const _reason: string = err.message;
+}
+const _isDecodeError: boolean = decodeErrors[0] instanceof Packet.DecodeError;
+const _typeName: string = Packet.typeName(Packet.TYPE.RRSIG);
+const _headerSize: number = Packet.HEADER_SIZE;
+const _typeOfCode: string | undefined = Packet.TYPE_NAME[1];
+const _ednsOptionName: string | undefined = Packet.EDNS_OPTION_NAME[8];
+
 const q: DNS.Packet.Question = parsed.questions[0];
 if (q) {
   Packet.createResourceFromQuestion(q, { address: '1.2.3.4', ttl: 60 });
