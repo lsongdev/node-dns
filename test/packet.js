@@ -2094,3 +2094,63 @@ test(
   },
   { timeout: 1000 },
 );
+
+test('EDNS encode rejects an option that is not octet-aligned', function () {
+  // The option length is 16 bits of octets. An encoder that stopped mid-octet
+  // would floor it — declaring 0 octets while shipping one — misaligning every
+  // option after it. Registered temporarily, since this needs a custom codec.
+  const CODE = 0x99;
+  Packet.EDNS_OPTION_NAME[CODE] = 'ODDBITS';
+  Packet.Resource.EDNS.ODDBITS = { encode: (record, w) => w.write(0b101, 3) };
+  try {
+    const packet = new Packet();
+    packet.header.qr = 1;
+    packet.additionals.push(Packet.Resource.EDNS([{ ednsCode: CODE }]));
+    assert.throws(
+      () => packet.toBuffer(),
+      /EDNS option 153 encoder wrote 3 bits, not a whole number of octets/,
+    );
+  } finally {
+    delete Packet.EDNS_OPTION_NAME[CODE];
+    delete Packet.Resource.EDNS.ODDBITS;
+  }
+});
+
+test('EDNS encode rejects an option too long for its length field', function () {
+  const CODE = 0x9a;
+  Packet.EDNS_OPTION_NAME[CODE] = 'HUGE';
+  Packet.Resource.EDNS.HUGE = {
+    encode: (record, w) => {
+      for (let i = 0; i <= 0xffff; i++) w.write(0, 8);
+    },
+  };
+  try {
+    const packet = new Packet();
+    packet.header.qr = 1;
+    packet.additionals.push(Packet.Resource.EDNS([{ ednsCode: CODE }]));
+    assert.throws(
+      () => packet.toBuffer(),
+      /EDNS option 154 is 65536 octets, too long for its 16-bit length field/,
+    );
+  } finally {
+    delete Packet.EDNS_OPTION_NAME[CODE];
+    delete Packet.Resource.EDNS.HUGE;
+  }
+});
+
+test('EDNS option length matches the octets actually written', function () {
+  // Guards the arithmetic itself: a 7-octet ECS option must declare 7.
+  const packet = new Packet();
+  packet.header.qr = 1;
+  packet.additionals.push(
+    Packet.Resource.EDNS([Packet.Resource.EDNS.ECS('10.11.12.0/24')]),
+  );
+  const buf = packet.toBuffer();
+  // OPT rdata begins after header(12) + name(1) + type(2) + class(2) + ttl(4)
+  // + rdlength(2); the option header is code(2) then length(2).
+  const optionLengthAt = 12 + 1 + 2 + 2 + 4 + 2 + 2;
+  const declared = buf.readUInt16BE(optionLengthAt);
+  const rdlength = buf.readUInt16BE(12 + 1 + 2 + 2 + 4);
+  assert.equal(declared, 7, 'family(2) + prefixes(2) + 3 address octets');
+  assert.equal(rdlength, declared + 4, 'rdata is the option header plus body');
+});

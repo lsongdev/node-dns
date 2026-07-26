@@ -1183,8 +1183,23 @@ Packet.Resource.EDNS.encode = function (record, writer) {
     if (codec && codec.encode) {
       const w = new Packet.Writer();
       codec.encode(rdata, w);
+      // The 16-bit length has to match what the encoder actually wrote. A
+      // fractional or oversized count is silently truncated by write(), which
+      // would misalign every option after this one and the records beyond.
+      if (w.bitLength() % 8 !== 0) {
+        throw new Error(
+          `EDNS option ${rdata.ednsCode} encoder wrote ${w.bitLength()} bits, ` +
+            'not a whole number of octets',
+        );
+      }
+      if (w.byteLength() > 0xffff) {
+        throw new Error(
+          `EDNS option ${rdata.ednsCode} is ${w.byteLength()} octets, too long ` +
+            'for its 16-bit length field',
+        );
+      }
       writer.write(rdata.ednsCode, 16);
-      writer.write(w.buffer.length / 8, 16);
+      writer.write(w.byteLength(), 16);
       writer.writeBuffer(w);
     } else {
       debug(
