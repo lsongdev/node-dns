@@ -65,11 +65,14 @@
     "url": "https://github.com/lsongdev/node-dns/issues"
   },
   "homepage": "https://github.com/lsongdev/node-dns#readme",
+  "engines": {
+    "node": ">=22"
+  },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
-    "eslint": "^10.4.0",
-    "globals": "^17.6.0",
-    "prettier": "^3.8.3"
+    "eslint": "^10.8.0",
+    "globals": "^17.8.0",
+    "prettier": "^3.9.6"
   },
   "prettier": {
     "printWidth": 80,

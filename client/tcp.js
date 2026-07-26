@@ -1,6 +1,9 @@
 const tls = require('node:tls');
 const tcp = require('node:net');
 const Packet = require('../packet');
+const { debuglog } = require('node:util');
+
+const debug = debuglog('dns2');
 
 const makeQuery = ({
   name,
@@ -46,6 +49,11 @@ const TCPClient = ({
     const message = makeQuery({ name, type, cls, ...options });
     const [host] = dns.split(':');
     const client = protocols[protocol](host, port);
+    // The socket outlives the single-message read below — we still end() it —
+    // and Packet.readStream releases its own listeners once it has the message.
+    // An 'error' with no listener is fatal to the process, so hold one here for
+    // the socket's whole life; readStream's rejection reports the failure.
+    client.on('error', err => debug('tcp: socket error: %s', err.message));
 
     sendQuery(client, message);
     const data = await Packet.readStream(client);

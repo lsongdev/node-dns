@@ -1751,3 +1751,81 @@ test('Resource#encode rejects a missing class', function () {
     /Resource encode "noclass.test": class must be a 16-bit integer/,
   );
 });
+
+test('Question#encode reports a NaN type accurately', function () {
+  // JSON.stringify renders NaN and Infinity as "null"; the message must name
+  // the value that was actually passed.
+  const packet = new Packet();
+  packet.questions.push({
+    name: 'nan.test',
+    type: parseInt('nonsense', 10),
+    class: Packet.CLASS.IN,
+  });
+  assert.throws(
+    () => packet.toBuffer(),
+    /type must be a 16-bit integer, got NaN/,
+  );
+});
+
+test('Question#encode distinguishes a string code from a number', function () {
+  const packet = new Packet();
+  packet.questions.push({
+    name: 'str.test',
+    type: '1',
+    class: Packet.CLASS.IN,
+  });
+  assert.throws(
+    () => packet.toBuffer(),
+    /type must be a 16-bit integer, got '1'/,
+  );
+});
+
+test(
+  'Packet.readStream leaves pipelined bytes for the next reader',
+  async function () {
+    // Two length-prefixed messages arrive together. Reading the first must not
+    // swallow the second: the earlier implementation drained everything into a
+    // closure that had already resolved, so the second read saw nothing.
+    const stream = new PassThrough();
+    const frame = body =>
+      Buffer.concat([Buffer.from([0x00, body.length]), body]);
+    const first = Buffer.from([0x11, 0x22, 0x33]);
+    const second = Buffer.from([0xaa, 0xbb]);
+    stream.write(Buffer.concat([frame(first), frame(second)]));
+
+    assert.deepEqual(await Packet.readStream(stream), first);
+    // The pre-fix failure is a hang, not a wrong value: the second message's
+    // octets had been drained into the first (already settled) call, so nothing
+    // would ever satisfy this read. The short per-test timeout reports it.
+    assert.deepEqual(await Packet.readStream(stream), second);
+  },
+  { timeout: 1000 },
+);
+
+test('Packet.readStream releases its listeners once settled', async function () {
+  const stream = new PassThrough();
+  const message = Buffer.from([0x01, 0x02]);
+  stream.write(Buffer.concat([Buffer.from([0x00, message.length]), message]));
+  await Packet.readStream(stream);
+
+  for (const event of ['readable', 'end', 'error']) {
+    assert.equal(
+      stream.listenerCount(event),
+      0,
+      `no ${event} listener should remain on the socket`,
+    );
+  }
+});
+
+test('Packet.readStream does not accumulate bytes after settling', async function () {
+  const stream = new PassThrough();
+  const message = Buffer.from([0x07]);
+  stream.write(Buffer.concat([Buffer.from([0x00, 0x01]), message]));
+  assert.deepEqual(await Packet.readStream(stream), message);
+
+  // Traffic arriving after the promise settled stays in the stream rather than
+  // being pulled into the settled call's buffer.
+  stream.write(Buffer.from([0x00, 0x01, 0x63]));
+  await new Promise(resolve => setImmediate(resolve));
+  assert.deepEqual(stream.read(), Buffer.from([0x00, 0x01, 0x63]));
+});
