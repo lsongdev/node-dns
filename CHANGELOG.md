@@ -6,7 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### [3.1.0] - 2026-07-26
 
-- BREAKING: Node.js 22 is the floor, declared in `engines`
+- chore: declare Node.js 22 as the floor
 - feat(packet): Extended DNS Errors (RFC 8914) — `Packet.EDE` INFO-CODEs, an EDE
   EDNS option codec, and `Packet.createErrorResponseFromRequest`
 - feat(packet): `Packet.RCODE` completed from the IANA registry — 6-11 and 16-23

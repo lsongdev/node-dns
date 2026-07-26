@@ -2049,3 +2049,48 @@ test('createErrorResponseFromRequest caps EXTRA-TEXT length', function () {
   const [ede] = parsed.additionals[0].rdata;
   assert.equal(ede.extraText.length, Packet.EDE_MAX_TEXT);
 });
+
+test(
+  'Packet.readStream reports an already-ended stream instead of hanging',
+  async function () {
+    // 'end' fires before readStream attaches, so its own listener can never run.
+    // Without the readableEnded check nothing settles the promise.
+    const stream = new PassThrough();
+    stream.end(Buffer.from([0x00, 0x01, 0x07]));
+    stream.resume();
+    await new Promise(resolve => stream.on('end', resolve));
+    assert.equal(stream.readableEnded, true, 'fixture precondition');
+
+    await assert.rejects(
+      Packet.readStream(stream),
+      /closed after 0 octet\(s\), before the 2-octet message length prefix/,
+    );
+  },
+  { timeout: 1000 },
+);
+
+test(
+  'Packet.readStream does not unshift into an ended stream',
+  async function () {
+    // A real socket empties its read buffer before emitting 'end', so it cannot
+    // present leftover bytes and readableEnded at once. This pairs a live
+    // stream with readableEnded forced on — the shape the guard exists for,
+    // where unshift would throw ERR_STREAM_UNSHIFT_AFTER_END_EVENT.
+    const stream = new PassThrough();
+    const frame = body =>
+      Buffer.concat([Buffer.from([0x00, body.length]), body]);
+    const first = Buffer.from([0x11, 0x22]);
+    stream.write(Buffer.concat([frame(first), frame(Buffer.from([0xaa]))]));
+    Object.defineProperty(stream, 'readableEnded', { value: true });
+    let unshifted = false;
+    const realUnshift = stream.unshift.bind(stream);
+    stream.unshift = chunk => {
+      unshifted = true;
+      return realUnshift(chunk);
+    };
+
+    assert.deepEqual(await Packet.readStream(stream), first);
+    assert.equal(unshifted, false, 'must not unshift into an ended stream');
+  },
+  { timeout: 1000 },
+);
