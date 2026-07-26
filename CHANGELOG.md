@@ -4,9 +4,13 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Unreleased
 
-### [3.0.1] - 2026-07-26
+### [3.1.0] - 2026-07-26
 
 - BREAKING: Node.js 22 is the floor, declared in `engines`
+- feat(packet): Extended DNS Errors (RFC 8914) — `Packet.EDE` INFO-CODEs, an EDE
+  EDNS option codec, and `Packet.createErrorResponseFromRequest`
+- feat(packet): `Packet.RCODE` completed from the IANA registry — 6-11 and 16-23
+- feat(ts): `Packet.RCODE` was missing from the type declarations entirely
 - feat(packet): Packet.parse stops at a failure that leaves the reader misaligned
 - feat(packet): RDLENGTH bounds every rdata decoder, so a malformed record no longer cascades (RFC 1035 §4.1.3)
 - feat(packet): `Packet.typeName`, `Packet.TYPE_NAME`, `Packet.EDNS_OPTION_NAME`
@@ -105,3 +109,4 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 [2.3.0]: https://github.com/lsongdev/node-dns/releases/tag/v2.3.0
 [2.2.0]: https://github.com/lsongdev/node-dns/releases/tag/v2.2.0
 [2.2.1]: https://github.com/lsongdev/node-dns/releases/tag/v2.2.1
+[3.1.0]: https://github.com/lsongdev/node-dns/releases/tag/v3.1.0

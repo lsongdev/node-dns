@@ -888,6 +888,22 @@ test('Packet.RCODE contains all standard error codes', function () {
   assert.equal(Packet.RCODE.NXDOMAIN, 3);
   assert.equal(Packet.RCODE.NOTIMP, 4);
   assert.equal(Packet.RCODE.REFUSED, 5);
+  assert.equal(Packet.RCODE.YXDOMAIN, 6);
+  assert.equal(Packet.RCODE.YXRRSET, 7);
+  assert.equal(Packet.RCODE.NXRRSET, 8);
+  assert.equal(Packet.RCODE.NOTAUTH, 9);
+  assert.equal(Packet.RCODE.NOTZONE, 10);
+  assert.equal(Packet.RCODE.DSOTYPENI, 11);
+  // 16 is assigned twice by IANA; both names share the code point.
+  assert.equal(Packet.RCODE.BADVERS, 16);
+  assert.equal(Packet.RCODE.BADSIG, 16);
+  assert.equal(Packet.RCODE.BADKEY, 17);
+  assert.equal(Packet.RCODE.BADTIME, 18);
+  assert.equal(Packet.RCODE.BADMODE, 19);
+  assert.equal(Packet.RCODE.BADNAME, 20);
+  assert.equal(Packet.RCODE.BADALG, 21);
+  assert.equal(Packet.RCODE.BADTRUNC, 22);
+  assert.equal(Packet.RCODE.BADCOOKIE, 23);
 });
 
 test('Packet.RCODE is preserved through encode/parse round-trip', function () {
@@ -896,6 +912,9 @@ test('Packet.RCODE is preserved through encode/parse round-trip', function () {
     pkt.header.id = 0x1234;
     pkt.header.qr = 1;
     pkt.header.rcode = code;
+    // RFC 6891 §6.1.3: the header holds only 4 bits of RCODE. Anything above
+    // 15 needs an OPT record to carry its high byte.
+    if (code > 0xf) pkt.additionals.push(Packet.Resource.EDNS([]));
     const parsed = Packet.parse(pkt.toBuffer());
     assert.equal(
       parsed.header.rcode,
@@ -903,6 +922,16 @@ test('Packet.RCODE is preserved through encode/parse round-trip', function () {
       `RCODE.${name} (${code}) did not survive encode→parse`,
     );
   }
+});
+
+test('extended RCODE without an OPT loses its high byte (RFC 6891 §6.1.3)', function () {
+  // There is nowhere for the high byte to go, so BADVERS (16) ships as the low
+  // nibble alone — 0, i.e. NOERROR. This is why
+  // Packet.createErrorResponseFromRequest attaches an OPT for any rcode > 15.
+  const pkt = new Packet();
+  pkt.header.qr = 1;
+  pkt.header.rcode = Packet.RCODE.BADVERS;
+  assert.equal(Packet.parse(pkt.toBuffer()).header.rcode, 0);
 });
 
 test('Resource encode round-trips unknown type via raw data fallback', function () {
@@ -1828,4 +1857,195 @@ test('Packet.readStream does not accumulate bytes after settling', async functio
   stream.write(Buffer.from([0x00, 0x01, 0x63]));
   await new Promise(resolve => setImmediate(resolve));
   assert.deepEqual(stream.read(), Buffer.from([0x00, 0x01, 0x63]));
+});
+
+// ── Extended DNS Errors (RFC 8914) ──────────────────────────────────────────
+
+test('EDNS.EDE round-trips through a full message', function () {
+  const packet = new Packet();
+  packet.header.id = 0x5150;
+  packet.header.qr = 1;
+  packet.header.rcode = Packet.RCODE.SERVFAIL;
+  packet.additionals.push(
+    Packet.Resource.EDNS([
+      Packet.Resource.EDNS.EDE(Packet.EDE.INVALID_DATA, 'rdata was nonsense'),
+    ]),
+  );
+  const parsed = Packet.parse(packet.toBuffer());
+  assert.deepEqual(parsed.errors, []);
+  const opt = parsed.additionals.find(r => r.type === Packet.TYPE.EDNS);
+  const [ede] = opt.rdata;
+  assert.equal(ede.ednsCode, Packet.EDNS_OPTION_CODE.EDE);
+  assert.equal(ede.infoCode, 24);
+  assert.equal(ede.extraText, 'rdata was nonsense');
+  assert.equal(parsed.header.rcode, Packet.RCODE.SERVFAIL);
+});
+
+test('EDNS.EDE carries an empty EXTRA-TEXT (RFC 8914 §2)', function () {
+  const packet = new Packet();
+  packet.header.qr = 1;
+  packet.additionals.push(
+    Packet.Resource.EDNS([Packet.Resource.EDNS.EDE(Packet.EDE.BLOCKED)]),
+  );
+  const parsed = Packet.parse(packet.toBuffer());
+  const [ede] = parsed.additionals[0].rdata;
+  assert.equal(ede.infoCode, Packet.EDE.BLOCKED);
+  assert.equal(ede.extraText, '');
+});
+
+test('EDNS.EDE alongside ECS in one OPT record', function () {
+  const packet = new Packet();
+  packet.header.qr = 1;
+  packet.additionals.push(
+    Packet.Resource.EDNS([
+      Packet.Resource.EDNS.ECS('10.20.0.0/16'),
+      Packet.Resource.EDNS.EDE(Packet.EDE.CENSORED, 'nope'),
+    ]),
+  );
+  const parsed = Packet.parse(packet.toBuffer());
+  const { rdata } = parsed.additionals[0];
+  assert.equal(rdata.length, 2);
+  assert.equal(rdata[0].ip, '10.20.0.0');
+  assert.equal(rdata[1].infoCode, Packet.EDE.CENSORED);
+  assert.equal(rdata[1].extraText, 'nope');
+});
+
+test('EDNS.EDE decode preserves multi-byte UTF-8 text', function () {
+  const text = 'signature expiré — 서명';
+  const packet = new Packet();
+  packet.header.qr = 1;
+  packet.additionals.push(
+    Packet.Resource.EDNS([
+      Packet.Resource.EDNS.EDE(Packet.EDE.SIGNATURE_EXPIRED, text),
+    ]),
+  );
+  const parsed = Packet.parse(packet.toBuffer());
+  assert.equal(parsed.additionals[0].rdata[0].extraText, text);
+});
+
+test('EDNS.EDE decode rejects an option shorter than its INFO-CODE', function () {
+  assert.throws(
+    () =>
+      Packet.Resource.EDNS.EDE.decode(
+        new Packet.Reader(Buffer.from([0x00])),
+        1,
+      ),
+    /EDNS.EDE decode: option is 1 octet\(s\), expected at least 2/,
+  );
+});
+
+test('EDNS.EDE decode strips a trailing NUL some senders add', function () {
+  // RFC 8914 §3 — EXTRA-TEXT must not be assumed null-terminated.
+  const reader = new Packet.Reader(Buffer.from([0x00, 0x18, 0x68, 0x69, 0x00]));
+  const ede = Packet.Resource.EDNS.EDE.decode(reader, 5);
+  assert.equal(ede.infoCode, 24);
+  assert.equal(ede.extraText, 'hi');
+});
+
+test('EDNS.EDE decodes an INFO-CODE this library has no name for', function () {
+  const reader = new Packet.Reader(Buffer.from([0xc0, 0x00]));
+  const ede = Packet.Resource.EDNS.EDE.decode(reader, 2);
+  assert.equal(ede.infoCode, 49152, 'private-use range decodes as a number');
+  assert.equal(Packet.EDE_NAME[ede.infoCode], undefined);
+});
+
+test('Packet.EDE_NAME names a received INFO-CODE', function () {
+  assert.equal(Packet.EDE_NAME[24], 'INVALID_DATA');
+  assert.equal(Packet.EDE_NAME[0], 'OTHER');
+});
+
+// ── createErrorResponseFromRequest ──────────────────────────────────────────
+
+// A request that decoded except for one malformed additional record.
+function requestWithDecodeError({ edns = true } = {}) {
+  const query = new Packet();
+  query.header.id = 0x3131;
+  query.questions.push({
+    name: 'broken.test',
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
+  });
+  if (edns) query.additionals.push(Packet.Resource.EDNS([]));
+  const buffer = query.toBuffer();
+  // Append an AAAA record claiming 4 octets of rdata but supplying none.
+  const truncated = Buffer.from([
+    0x00, 0x00, 0x1c, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x04,
+  ]);
+  const malformed = Buffer.concat([buffer, truncated]);
+  malformed.writeUInt16BE(query.additionals.length + 1, 10); // arcount
+  const parsed = Packet.parse(malformed);
+  assert.ok(parsed.errors.length, 'fixture should produce a decode error');
+  return parsed;
+}
+
+test('createErrorResponseFromRequest reports the decode reason as EDE text', function () {
+  const request = requestWithDecodeError();
+  const response = Packet.createErrorResponseFromRequest(
+    request,
+    Packet.RCODE.FORMERR,
+    {
+      infoCode: Packet.EDE.INVALID_DATA,
+      extraText: request.errors.map(e => e.message).join('; '),
+    },
+  );
+  const parsed = Packet.parse(response.toBuffer());
+  assert.equal(parsed.header.id, 0x3131, 'answers the right transaction');
+  assert.equal(parsed.header.qr, 1);
+  assert.equal(parsed.header.rcode, Packet.RCODE.FORMERR);
+  assert.deepEqual(parsed.questions[0].name, 'broken.test');
+  const opt = parsed.additionals.find(r => r.type === Packet.TYPE.EDNS);
+  const [ede] = opt.rdata;
+  assert.equal(ede.infoCode, Packet.EDE.INVALID_DATA);
+  assert.match(ede.extraText, /additionals\[1\]/);
+  assert.match(ede.extraText, /RDLENGTH 4 but only 0 octet\(s\)/);
+});
+
+test('createErrorResponseFromRequest omits EDE for a non-EDNS request', function () {
+  // RFC 8914 §3 — extended errors belong only in responses to EDNS requests.
+  const request = requestWithDecodeError({ edns: false });
+  const response = Packet.createErrorResponseFromRequest(
+    request,
+    Packet.RCODE.FORMERR,
+    { infoCode: Packet.EDE.INVALID_DATA, extraText: 'ignored' },
+  );
+  const parsed = Packet.parse(response.toBuffer());
+  assert.equal(parsed.header.rcode, Packet.RCODE.FORMERR);
+  assert.equal(parsed.additionals.length, 0, 'no OPT is invented');
+});
+
+test('createErrorResponseFromRequest echoes an OPT even with no EDE', function () {
+  const request = requestWithDecodeError();
+  const response = Packet.createErrorResponseFromRequest(
+    request,
+    Packet.RCODE.REFUSED,
+  );
+  const parsed = Packet.parse(response.toBuffer());
+  assert.equal(parsed.header.rcode, Packet.RCODE.REFUSED);
+  const opt = parsed.additionals.find(r => r.type === Packet.TYPE.EDNS);
+  assert.ok(opt, 'an EDNS request gets an OPT back (RFC 6891 §6.1.1)');
+  assert.deepEqual(opt.rdata, []);
+});
+
+test('createErrorResponseFromRequest attaches an OPT so BADVERS survives', function () {
+  // Even for a request with no OPT: rcode 16 has nowhere else to put its high
+  // byte, and would otherwise go out as NOERROR.
+  const request = requestWithDecodeError({ edns: false });
+  const response = Packet.createErrorResponseFromRequest(
+    request,
+    Packet.RCODE.BADVERS,
+  );
+  const parsed = Packet.parse(response.toBuffer());
+  assert.equal(parsed.header.rcode, Packet.RCODE.BADVERS);
+});
+
+test('createErrorResponseFromRequest caps EXTRA-TEXT length', function () {
+  const request = requestWithDecodeError();
+  const response = Packet.createErrorResponseFromRequest(
+    request,
+    Packet.RCODE.SERVFAIL,
+    { infoCode: Packet.EDE.OTHER, extraText: 'x'.repeat(5000) },
+  );
+  const parsed = Packet.parse(response.toBuffer());
+  const [ede] = parsed.additionals[0].rdata;
+  assert.equal(ede.extraText.length, Packet.EDE_MAX_TEXT);
 });

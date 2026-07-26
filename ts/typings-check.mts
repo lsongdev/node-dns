@@ -35,6 +35,7 @@ import type {
   Question,
   Resource,
   DecodeError,
+  EdeOption,
   DnsHandler,
   DnsResolver,
   ServerAddresses,
@@ -93,6 +94,13 @@ const buf: Buffer = pkt.toBuffer();
 const parsed: Packet = Packet.parse(buf);
 
 const decodeErrors: DecodeError[] = parsed.errors;
+const _ede: EdeOption = Packet.Resource.EDNS.EDE(Packet.EDE.INVALID_DATA, 'why');
+const _formErr: Packet = Packet.createErrorResponseFromRequest(
+  parsed,
+  Packet.RCODE.FORMERR,
+  { infoCode: _ede.infoCode, extraText: _ede.extraText },
+);
+void _formErr.additionals.length;
 void decodeErrors.map(e => `${e.section}: ${e.message} (recovered=${e.recovered})`);
 
 const hdr: Header = parsed.header;

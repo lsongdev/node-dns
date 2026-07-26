@@ -103,18 +103,99 @@ declare namespace DNS {
       ANY : 0xff;
     };
 
+    /**
+     * DNS response codes. Codes above 15 are only transmissible in a message
+     * carrying an OPT record — their high byte rides in the OPT TTL
+     * (RFC 6891 §6.1.3).
+     */
+    static RCODE: {
+      NOERROR   : 0;
+      FORMERR   : 1;
+      SERVFAIL  : 2;
+      NXDOMAIN  : 3;
+      NOTIMP    : 4;
+      REFUSED   : 5;
+      YXDOMAIN  : 6;
+      YXRRSET   : 7;
+      NXRRSET   : 8;
+      NOTAUTH   : 9;
+      NOTZONE   : 10;
+      DSOTYPENI : 11;
+      /** Unsupported EDNS version (RFC 6891); shares code 16 with BADSIG. */
+      BADVERS   : 16;
+      /** TSIG signature failure (RFC 8945); shares code 16 with BADVERS. */
+      BADSIG    : 16;
+      BADKEY    : 17;
+      BADTIME   : 18;
+      BADMODE   : 19;
+      BADNAME   : 20;
+      BADALG    : 21;
+      BADTRUNC  : 22;
+      BADCOOKIE : 23;
+    };
+
     static EDNS_OPTION_CODE: {
       ECS: 0x08;
+      /** Extended DNS Error (RFC 8914). */
+      EDE: 0x0f;
+    };
+
+    /**
+     * Extended DNS Error INFO-CODEs (RFC 8914 §4). These explain a response;
+     * they do not replace its RCODE.
+     */
+    static EDE: {
+      OTHER                          : 0;
+      UNSUPPORTED_DNSKEY_ALGORITHM   : 1;
+      UNSUPPORTED_DS_DIGEST_TYPE     : 2;
+      STALE_ANSWER                   : 3;
+      FORGED_ANSWER                  : 4;
+      DNSSEC_INDETERMINATE           : 5;
+      DNSSEC_BOGUS                   : 6;
+      SIGNATURE_EXPIRED              : 7;
+      SIGNATURE_NOT_YET_VALID        : 8;
+      DNSKEY_MISSING                 : 9;
+      RRSIGS_MISSING                 : 10;
+      NO_ZONE_KEY_BIT_SET            : 11;
+      NSEC_MISSING                   : 12;
+      CACHED_ERROR                   : 13;
+      NOT_READY                      : 14;
+      BLOCKED                        : 15;
+      CENSORED                       : 16;
+      FILTERED                       : 17;
+      PROHIBITED                     : 18;
+      STALE_NXDOMAIN_ANSWER          : 19;
+      NOT_AUTHORITATIVE              : 20;
+      NOT_SUPPORTED                  : 21;
+      NO_REACHABLE_AUTHORITY         : 22;
+      NETWORK_ERROR                  : 23;
+      INVALID_DATA                   : 24;
+      SIGNATURE_EXPIRED_BEFORE_VALID : 25;
+      TOO_EARLY                      : 26;
+      UNSUPPORTED_NSEC3_ITERATIONS   : 27;
+      UNABLE_TO_CONFORM_TO_POLICY    : 28;
+      SYNTHESIZED                    : 29;
+      INVALID_QUERY_TYPE             : 30;
+      RATE_LIMITED                   : 31;
+      OVER_QUOTA                     : 32;
+      NEGATIVE_TRUST_ANCHOR          : 33;
+      NEW_DELEGATION_ONLY            : 34;
     };
 
     /** Octets in a DNS message header. */
     static HEADER_SIZE: 12;
+
+    /** Longest EXTRA-TEXT createErrorResponseFromRequest will emit. */
+    static EDE_MAX_TEXT: number;
 
     /** Reverse of Packet.TYPE, keyed by type code. */
     static TYPE_NAME: Record<number, string>;
 
     /** Reverse of Packet.EDNS_OPTION_CODE, keyed by option code. */
     static EDNS_OPTION_NAME: Record<number, string>;
+
+    /** Reverse of Packet.EDE, keyed by INFO-CODE. */
+    static EDE_NAME: Record<number, string>;
 
     // ── Static helpers ──────────────────────────────────────────────────────
 
@@ -130,6 +211,17 @@ declare namespace DNS {
       prototype: Packet.DecodeError;
     };
     static createResponseFromRequest(request: Packet): Packet;
+    /**
+     * Build an error response, optionally explaining why with an RFC 8914
+     * Extended DNS Error. The EDE option is attached only when the request
+     * carried an OPT record; an OPT is added regardless when `rcode` exceeds 15
+     * so its high byte survives serialization.
+     */
+    static createErrorResponseFromRequest(
+      request: Packet,
+      rcode: number,
+      ede?: { infoCode: number; extraText?: string },
+    ): Packet;
     static createResourceFromQuestion(
       base: Packet.Question,
       record: Partial<Packet.Resource>,
@@ -167,7 +259,29 @@ declare namespace DNS {
       parse(reader: Buffer | Packet.Reader): Packet.Resource;
       decode(reader: Buffer | Packet.Reader): Packet.Resource;
       encode(resource: Packet.Resource, writer?: Packet.Writer): Buffer;
-      EDNS(rdata: object[]): Packet.Resource;
+      EDNS: {
+        (
+          rdata: object[],
+          opts?: {
+            extendedRcode?: number;
+            version?: number;
+            doFlag?: boolean;
+            udpPayloadSize?: number;
+          },
+        ): Packet.Resource;
+        /** EDNS Client Subnet, in CIDR notation, e.g. "1.2.3.4/24" (RFC 7871). */
+        ECS: {
+          (clientIp: string): Packet.EcsOption;
+          decode(reader: Packet.Reader, length: number): Packet.EcsOption;
+          encode(record: Packet.EcsOption, writer: Packet.Writer): void;
+        };
+        /** Extended DNS Error (RFC 8914). */
+        EDE: {
+          (infoCode: number, extraText?: string): Packet.EdeOption;
+          decode(reader: Packet.Reader, length: number): Packet.EdeOption;
+          encode(record: Packet.EdeOption, writer: Packet.Writer): void;
+        };
+      };
     };
 
     static Name: {
@@ -219,15 +333,21 @@ declare namespace DNS {
       // CNAME / PTR / NS
       domain?: string;
       ns?: string;
-      // TXT / SPF
-      data?: string | string[];
+      // TXT / SPF; also the preserved raw RDATA of a type with no encoder
+      data?: string | string[] | Buffer;
+      // EDNS / OPT — `class` doubles as the requestor's UDP payload size
+      rdata?: EdnsOption[];
+      extendedRcode?: number;
+      version?: number;
+      doFlag?: boolean;
       // SOA
       primary?: string;
       admin?: string;
       serial?: number;
       refresh?: number;
       retry?: number;
-      expiration?: number;
+      /** Seconds for SOA; a YYYYMMDDHHmmSS display string for RRSIG. */
+      expiration?: number | string;
       minimum?: number;
       // SRV
       weight?: number;
@@ -241,6 +361,17 @@ declare namespace DNS {
       algorithm?: number;
       keyTag?: number;
       publicKey?: string;
+      protocol?: number;
+      zoneKey?: boolean;
+      zoneSep?: boolean;
+      key?: string;
+      // RRSIG (decode only)
+      sigType?: number;
+      labels?: number;
+      originalTtl?: number;
+      inception?: string;
+      signer?: string;
+      signature?: string;
       toBuffer(writer?: Writer): Buffer;
     }
 
@@ -254,6 +385,26 @@ declare namespace DNS {
       offset?: number;
       /** Whether decoding resumed after this failure. */
       recovered: boolean;
+    }
+
+    /** An EDNS option as carried in Packet.Resource['rdata']. */
+    interface EdnsOption {
+      ednsCode: number;
+    }
+
+    /** EDNS Client Subnet option (RFC 7871). */
+    interface EcsOption extends EdnsOption {
+      family: number;
+      sourcePrefixLength: number;
+      scopePrefixLength: number;
+      ip?: string;
+    }
+
+    /** Extended DNS Error option (RFC 8914). */
+    interface EdeOption extends EdnsOption {
+      /** See Packet.EDE for the registered INFO-CODEs. */
+      infoCode: number;
+      extraText: string;
     }
 
     interface Reader {
