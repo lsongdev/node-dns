@@ -1,5 +1,5 @@
 const net = require('node:net');
-const { debuglog } = require('node:util');
+const { debuglog, inspect } = require('node:util');
 const { randomInt } = require('node:crypto');
 const BufferReader = require('./lib/reader');
 const BufferWriter = require('./lib/writer');
@@ -488,8 +488,11 @@ Packet.Question.parse = Packet.Question.decode = function (reader) {
 // such as Packet.TYPE.AAA (undefined) into a valid-looking type 0 on the wire.
 const assertCode = (value, field, context) => {
   if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
+    // inspect, not JSON.stringify: the latter renders NaN and Infinity as
+    // "null". Nor String(), which renders the string '1' as 1 — the very
+    // confusion this message exists to resolve.
     throw new Error(
-      `${context}: ${field} must be a 16-bit integer, got ${JSON.stringify(value)}`,
+      `${context}: ${field} must be a 16-bit integer, got ${inspect(value)}`,
     );
   }
 };
@@ -564,7 +567,7 @@ Packet.Resource.encode = function (resource, writer) {
   const rdlenBitPos = writer.bitLength();
   writer.write(0, 16);
   const rdataBitStart = writer.bitLength();
-  const codec = Packet.Resource[encoder];
+  const codec = encoder && Packet.Resource[encoder];
   if (codec && codec.encode) {
     codec.encode(resource, writer);
   } else {
@@ -617,7 +620,7 @@ Packet.Resource.parse = Packet.Resource.decode = function (reader) {
   const rdataStart = reader.offset;
   const rdataEnd = rdataStart + length * 8;
   const parser = Packet.TYPE_NAME[resource.type];
-  const codec = Packet.Resource[parser];
+  const codec = parser && Packet.Resource[parser];
   try {
     if (codec && codec.decode) {
       resource = codec.decode.call(resource, reader, length);
@@ -1074,7 +1077,7 @@ Packet.Resource.EDNS.decode = function (reader, length) {
     }
 
     const decoder = Packet.EDNS_OPTION_NAME[optionCode];
-    const codec = Packet.Resource.EDNS[decoder];
+    const codec = decoder && Packet.Resource.EDNS[decoder];
     if (codec && codec.decode) {
       const optionEnd = reader.offset + optionLength * 8;
       this.rdata.push(codec.decode(reader, optionLength));
@@ -1084,9 +1087,9 @@ Packet.Resource.EDNS.decode = function (reader, length) {
       // Skip the option body; `read` counts bits, the option length is octets.
       reader.offset += optionLength * 8;
       debug(
-        'node-dns > unknown EDNS rdata decoder %s(%j)',
-        decoder,
+        'node-dns > skipping EDNS option code %d (%d octets): no decoder',
         optionCode,
+        optionLength,
       );
     }
 
@@ -1101,7 +1104,7 @@ Packet.Resource.EDNS.encode = function (record, writer) {
   // back into the main writer.
   for (const rdata of record.rdata) {
     const encoder = Packet.EDNS_OPTION_NAME[rdata.ednsCode];
-    const codec = Packet.Resource.EDNS[encoder];
+    const codec = encoder && Packet.Resource.EDNS[encoder];
     if (codec && codec.encode) {
       const w = new Packet.Writer();
       codec.encode(rdata, w);
@@ -1110,9 +1113,8 @@ Packet.Resource.EDNS.encode = function (record, writer) {
       writer.writeBuffer(w);
     } else {
       debug(
-        'node-dns > unknown EDNS rdata encoder %s(%j)',
-        encoder,
-        rdata.ednsCode,
+        'node-dns > dropping EDNS option code %s: no encoder',
+        inspect(rdata.ednsCode),
       );
     }
   }
@@ -1406,22 +1408,39 @@ Packet.readStream = socket => {
   let chunks = [];
   let chunklen = 0;
   let settled = false;
+  let ended = false;
   let expected = null;
   return new Promise((resolve, reject) => {
+    // This call borrows the socket for exactly one message, so it releases its
+    // listeners once settled. Left attached, `onReadable` would keep pulling
+    // bytes out of the stream into `chunks` — never returned to anyone, and no
+    // longer visible to whoever reads the next pipelined message.
+    const cleanup = () => {
+      socket.removeListener('readable', onReadable);
+      socket.removeListener('end', onEnd);
+      socket.removeListener('error', fail);
+    };
     const fail = error => {
       if (settled) return;
       settled = true;
+      cleanup();
       reject(error);
     };
     const processMessage = () => {
       if (settled) return;
       settled = true;
+      cleanup();
       const buffer = Buffer.concat(chunks, chunklen);
       // Bound by the declared length: anything past it belongs to the next
-      // pipelined message, not this one.
-      resolve(buffer.slice(2, 2 + expected));
+      // pipelined message, not this one. Hand those octets back to the stream
+      // so the next reader still sees them. Once the peer has half-closed
+      // there is no next message, and unshift after 'end' would throw.
+      const end = 2 + expected;
+      if (!ended && chunklen > end) socket.unshift(buffer.slice(end));
+      resolve(buffer.slice(2, end));
     };
-    socket.on('end', () => {
+    const onEnd = () => {
+      ended = true;
       // A message cut short is reported as such. Resolving with the partial
       // bytes instead would surface as a puzzling decode failure downstream.
       if (expected === null) {
@@ -1441,9 +1460,8 @@ Packet.readStream = socket => {
         );
       }
       processMessage();
-    });
-    socket.on('error', fail);
-    socket.on('readable', () => {
+    };
+    const onReadable = () => {
       let chunk;
       while ((chunk = socket.read()) !== null) {
         chunks.push(chunk);
@@ -1459,7 +1477,13 @@ Packet.readStream = socket => {
       if (expected !== null && chunklen >= 2 + expected) {
         processMessage();
       }
-    });
+    };
+    socket.on('end', onEnd);
+    socket.on('error', fail);
+    socket.on('readable', onReadable);
+    // Drain anything buffered before our listener attached — in particular the
+    // remainder unshifted by a previous readStream call on this socket.
+    onReadable();
   });
 };
 

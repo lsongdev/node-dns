@@ -6,6 +6,7 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### [3.0.1] - 2026-07-26
 
+- BREAKING: Node.js 22 is the floor, declared in `engines`
 - feat(packet): Packet.parse stops at a failure that leaves the reader misaligned
 - feat(packet): RDLENGTH bounds every rdata decoder, so a malformed record no longer cascades (RFC 1035 §4.1.3)
 - feat(packet): `Packet.typeName`, `Packet.TYPE_NAME`, `Packet.EDNS_OPTION_NAME`

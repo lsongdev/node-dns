@@ -1,12 +1,14 @@
 {
   "compilerOptions": {
     "target": "ES2019",
-    "module": "commonjs",
-    "moduleResolution": "node",
+    // node16 resolves through the "require" condition of package.json
+    // "exports", which is how CommonJS consumers actually reach index.d.ts.
+    // The former node10 mode was removed in TypeScript 7.
+    "module": "node16",
+    "moduleResolution": "node16",
     "strict": true,
     "noEmit": true,
     "esModuleInterop": true,
-    "ignoreDeprecations": "6.0",
     "typeRoots": ["../node_modules/@types"]
   },
   "include": ["typings-check.ts"]
