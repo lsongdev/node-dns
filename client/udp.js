@@ -1,6 +1,5 @@
 const udp = require('node:dgram');
 const net = require('node:net');
-const crypto = require('node:crypto');
 const Packet = require('../packet');
 const { debuglog } = require('node:util');
 
@@ -16,7 +15,7 @@ module.exports = ({
   return (name, type = 'A', cls = Packet.CLASS.IN, options = {}) => {
     const { clientIp, recursive = true } = options;
     const query = new Packet();
-    query.header.id = crypto.randomInt(0x10000);
+    query.header.id = Packet.uuid();
     // see https://github.com/song940/node-dns/issues/29
     if (recursive) {
       query.header.rd = 1;
@@ -38,6 +37,10 @@ module.exports = ({
     return new Promise((resolve, reject) => {
       let settled = false;
       let timer;
+      // Packets that cannot be decoded are dropped, a forged or corrupt datagram
+      // must not pre-empt the real reply. Keep the reason so a subsequent timeout
+      // can explain itself
+      let lastDropped;
       const cleanup = () => {
         if (settled) return;
         settled = true;
@@ -56,6 +59,9 @@ module.exports = ({
           rinfo.port !== port ||
           (expectedAddress && rinfo.address !== expectedAddress)
         ) {
+          lastDropped =
+            `packet came from ${rinfo.address}:${rinfo.port}, not the ` +
+            `configured resolver ${dns}:${port}`;
           debug(
             'udp: dropping packet from unexpected sender %s:%d',
             rinfo.address,
@@ -67,11 +73,23 @@ module.exports = ({
         try {
           response = Packet.parse(message);
         } catch (e) {
+          lastDropped = `response could not be decoded: ${e.message}`;
           debug('udp: dropping unparseable packet: %s', e.message);
           return;
         }
+        if (response.errors.length) {
+          debug(
+            'udp: response %d decoded with %d error(s): %s',
+            response.header.id,
+            response.errors.length,
+            response.errors.map(e => e.message).join('; '),
+          );
+        }
         // Stray / late reply from a reused ephemeral port — keep listening.
         if (response.header.id !== query.header.id) {
+          lastDropped =
+            `response id ${response.header.id} did not match the query ` +
+            `id ${query.header.id}`;
           debug(
             'udp: dropping response with mismatched id %d (expected %d)',
             response.header.id,
@@ -102,7 +120,10 @@ module.exports = ({
       if (timeout > 0) {
         timer = setTimeout(() => {
           cleanup();
-          const err = new Error(`DNS query timed out after ${timeout}ms`);
+          const err = new Error(
+            `DNS query timed out after ${timeout}ms` +
+              (lastDropped ? ` (last ${lastDropped})` : ''),
+          );
           err.code = 'ETIMEDOUT';
           reject(err);
         }, timeout);

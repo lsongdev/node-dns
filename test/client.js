@@ -459,3 +459,123 @@ test('client/udp respects retryOverTCP:false and returns truncated packet', asyn
   );
   await new Promise(resolve => udpServer.close(resolve));
 });
+
+test('client/udp timeout names the last dropped response', async () => {
+  // A resolver that answers with something undecodable. The client is right to
+  // keep waiting for a real reply, but the eventual timeout should carry the
+  // reason rather than looking like an unresponsive server.
+  const server = udp.createSocket('udp4');
+  await new Promise(resolve => server.bind(0, '127.0.0.1', resolve));
+  const { port: serverPort } = server.address();
+  server.on('message', (msg, rinfo) =>
+    server.send(Buffer.alloc(5), rinfo.port, rinfo.address),
+  );
+
+  const query = UDPClient({ dns: '127.0.0.1', port: serverPort, timeout: 300 });
+  await assert.rejects(query('garbage.test'), err => {
+    assert.equal(err.code, 'ETIMEDOUT');
+    assert.match(err.message, /timed out after 300ms/);
+    assert.match(
+      err.message,
+      /last response could not be decoded: message is 5 octets, too short/,
+    );
+    return true;
+  });
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('client/udp timeout names an id mismatch', async () => {
+  const server = udp.createSocket('udp4');
+  await new Promise(resolve => server.bind(0, '127.0.0.1', resolve));
+  const { port: serverPort } = server.address();
+  server.on('message', (msg, rinfo) => {
+    const stray = new Packet();
+    stray.header.id = (Packet.parse(msg).header.id + 1) & 0xffff;
+    stray.header.qr = 1;
+    server.send(stray.toBuffer(), rinfo.port, rinfo.address);
+  });
+
+  const query = UDPClient({ dns: '127.0.0.1', port: serverPort, timeout: 300 });
+  await assert.rejects(
+    query('mismatch.test'),
+    /last response id \d+ did not match the query id \d+/,
+  );
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('dns#resolveA forwards clientIp as an ECS option', async () => {
+  // The second argument is documented as a client subnet; it has to reach the
+  // query as an EDNS Client Subnet option, not as the options bag itself.
+  let request;
+  const server = createUDPServer((req, send) => {
+    request = req;
+    const response = Packet.createResponseFromRequest(req);
+    response.answers.push({
+      name: 'subnet.test',
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 60,
+      address: '1.2.3.4',
+    });
+    send(response);
+  });
+  await server.listen(0, '127.0.0.1');
+  const { port } = server.address();
+
+  const dns = new DNS({ dns: '127.0.0.1', port });
+  await dns.resolveA('subnet.test', '178.67.222.0/24');
+
+  const opt = request.additionals.find(r => r.type === Packet.TYPE.EDNS);
+  assert.ok(opt, 'query carries an OPT record');
+  const [ecs] = opt.rdata;
+  assert.equal(ecs.ednsCode, Packet.EDNS_OPTION_CODE.ECS);
+  assert.equal(ecs.sourcePrefixLength, 24);
+  assert.equal(ecs.ip, '178.67.222.0');
+
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('dns#resolve succeeds when one of several name servers fails', async () => {
+  const server = createUDPServer((req, send) => {
+    const response = Packet.createResponseFromRequest(req);
+    response.answers.push({
+      name: 'survivor.test',
+      type: Packet.TYPE.A,
+      class: Packet.CLASS.IN,
+      ttl: 60,
+      address: '5.6.7.8',
+    });
+    send(response);
+  });
+  await server.listen(0, '127.0.0.1');
+  const { port } = server.address();
+
+  // 192.0.2.1 is TEST-NET-1 and will not answer; the working server must still
+  // satisfy the lookup rather than losing a race to the other's timeout.
+  const dns = new DNS({
+    nameServers: ['192.0.2.1', '127.0.0.1'],
+    port,
+    timeout: 500,
+  });
+  const result = await dns.resolve('survivor.test', 'A');
+  assert.equal(result.answers[0].address, '5.6.7.8');
+
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('dns#resolve reports every name server when all of them fail', async () => {
+  const dns = new DNS({
+    nameServers: ['192.0.2.1', '192.0.2.2'],
+    timeout: 300,
+  });
+  await assert.rejects(dns.resolve('nowhere.test', 'A'), err => {
+    assert.match(
+      err.message,
+      /A lookup of nowhere.test failed on all 2 name server\(s\)/,
+    );
+    assert.match(err.message, /192\.0\.2\.1: DNS query timed out/);
+    assert.match(err.message, /192\.0\.2\.2: DNS query timed out/);
+    assert.ok(err.cause instanceof AggregateError);
+    return true;
+  });
+});

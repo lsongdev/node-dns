@@ -1,3 +1,4 @@
+const net = require('node:net');
 const { debuglog } = require('node:util');
 const { randomInt } = require('node:crypto');
 const BufferReader = require('./lib/reader');
@@ -36,30 +37,20 @@ const toIPv6 = buffer => {
 
 const fromIPv6 = address => {
   const digits = address.split(':');
-  // CAVEAT edge case for :: and IPs starting
-  // or ending by ::
+  // Leading/trailing "::" produces an empty leading/trailing element that is
+  // not a zero group of its own; drop it so only the interior "" marks the run.
   if (digits[0] === '') {
     digits.shift();
   }
   if (digits[digits.length - 1] === '') {
     digits.pop();
   }
-  // node js 10 does not support Array.prototype.flatMap
-  if (!Array.prototype.flatMap) {
-    Array.prototype.flatMap = function (f, ctx) {
-      return this.reduce((r, x, i, a) => r.concat(f.call(ctx, x, i, a)), []);
-    };
-  }
-
-  // CAVEAT we have to take into account
-  // the extra space used by the empty string
+  // The interior empty string occupies a slot of its own, so it stands in for
+  // one more group than the shortfall in `digits`.
   const missingFields = 8 - digits.length + 1;
-  return digits.flatMap(digit => {
-    if (digit === '') {
-      return Array(missingFields).fill('0');
-    }
-    return digit.padStart(4, '0');
-  });
+  return digits.flatMap(digit =>
+    digit === '' ? Array(missingFields).fill('0') : digit.padStart(4, '0'),
+  );
 };
 
 /**
@@ -80,6 +71,9 @@ function Packet(data) {
   this.answers = [];
   this.authorities = [];
   this.additionals = [];
+  // Populated by Packet.parse with one Packet.DecodeError per record it could
+  // not decode; empty for messages built in memory or parsed cleanly.
+  this.errors = [];
   if (data instanceof Packet) {
     return data;
   } else if (data instanceof Packet.Header) {
@@ -101,6 +95,9 @@ function Packet(data) {
   }
   return this;
 }
+
+// Octets in a DNS message header (RFC 1035 §4.1.1).
+Packet.HEADER_SIZE = 12;
 
 /**
  * [QUERY_TYPE description]
@@ -127,6 +124,7 @@ Packet.TYPE = {
   AAAA: 0x1c,
   SRV: 0x21,
   EDNS: 0x29,
+  RRSIG: 0x2e,
   SPF: 0x63,
   AXFR: 0xfc,
   MAILB: 0xfd,
@@ -135,6 +133,23 @@ Packet.TYPE = {
   CAA: 0x101,
   DNSKEY: 0x30,
 };
+/**
+ * Reverse of Packet.TYPE, used to dispatch rdata codecs and to name types in
+ * diagnostics.
+ * @type {Object}
+ */
+Packet.TYPE_NAME = Object.fromEntries(
+  Object.entries(Packet.TYPE).map(([name, code]) => [code, name]),
+);
+
+/**
+ * Name of a type code, falling back to the RFC 3597 §5 "TYPE<n>" presentation
+ * for types this library has no codec for.
+ * @param  {number} code
+ * @return {string}
+ */
+Packet.typeName = code => Packet.TYPE_NAME[code] || `TYPE${code}`;
+
 /**
  * [QUERY_CLASS description]
  * @type {Object}
@@ -168,6 +183,13 @@ Packet.RCODE = {
 Packet.EDNS_OPTION_CODE = {
   ECS: 0x08,
 };
+/**
+ * Reverse of Packet.EDNS_OPTION_CODE.
+ * @type {Object}
+ */
+Packet.EDNS_OPTION_NAME = Object.fromEntries(
+  Object.entries(Packet.EDNS_OPTION_CODE).map(([name, code]) => [code, name]),
+);
 
 /**
  * Generate a cryptographically random 16-bit DNS transaction ID.
@@ -180,33 +202,83 @@ Packet.uuid = function () {
 };
 
 /**
+ * A record, question, or message that could not be decoded.
+ *
+ * Records that fail to decode are dropped rather than half-populated, so the
+ * reason has to travel separately: Packet.parse collects one of these per
+ * failure on `packet.errors`, and throws one when the message itself is
+ * unusable.
+ *
+ * @property {string}  [section] questions / answers / authorities / additionals
+ * @property {number}  [index]   position of the record within that section
+ * @property {number}  [offset]  octet offset in the message where it started
+ * @property {boolean} recovered whether decoding resumed after this failure
+ */
+class DecodeError extends Error {
+  constructor(message, context = {}) {
+    const { section, index, offset, cause } = context;
+    const where =
+      section === undefined
+        ? ''
+        : `${section}[${index}]${offset === undefined ? '' : ` at offset ${offset}`}: `;
+    super(`${where}${message}`, cause ? { cause } : undefined);
+    this.name = 'DecodeError';
+    Object.assign(this, context);
+    this.recovered = !!context.recovered;
+  }
+}
+Packet.DecodeError = DecodeError;
+
+/**
  * [parse description]
  * @param  {[type]} buffer [description]
  * @return {[type]}        [description]
+ * @throws {Packet.DecodeError} when the message has no usable header; per-record
+ *         failures are reported on the returned packet's `errors` array
  */
 Packet.parse = function (buffer) {
+  if (!Buffer.isBuffer(buffer)) {
+    throw new DecodeError(
+      `expected a Buffer, got ${buffer === null ? 'null' : typeof buffer}`,
+    );
+  }
+  if (buffer.length < Packet.HEADER_SIZE) {
+    throw new DecodeError(
+      `message is ${buffer.length} octets, too short for the ` +
+        `${Packet.HEADER_SIZE}-octet header (RFC 1035 §4.1.1)`,
+    );
+  }
   const packet = new Packet();
   const reader = new Packet.Reader(buffer);
   packet.header = Packet.Header.parse(reader);
-  [
-    // props             parser              count
+  // A failure that left the reader misaligned makes every later record in the
+  // message garbage, so parsing stops there rather than manufacturing junk
+  // records. Failures confined to one record's RDATA are recoverable: the
+  // reader is repositioned by RDLENGTH and the next record still decodes.
+  sections: for (const [section, decoder, count] of [
     ['questions', Packet.Question, packet.header.qdcount],
     ['answers', Packet.Resource, packet.header.ancount],
     ['authorities', Packet.Resource, packet.header.nscount],
     ['additionals', Packet.Resource, packet.header.arcount],
-  ].forEach(function (def) {
-    const section = def[0];
-    const decoder = def[1];
-    let count = def[2];
-    while (count--) {
+  ]) {
+    for (let index = 0; index < count; index++) {
+      const offset = reader.offset / 8;
       try {
-        packet[section] = packet[section] || [];
         packet[section].push(decoder.parse(reader));
-      } catch (e) {
-        debug('node-dns > parse %s error:', section, e.message);
+      } catch (cause) {
+        const error = new DecodeError(cause.message, {
+          section,
+          index,
+          offset,
+          recovered: !!cause.recovered,
+          cause,
+        });
+        packet.errors.push(error);
+        debug('node-dns > %s', error.message);
+        if (!error.recovered) break sections;
       }
     }
-  });
+  }
   // RFC 6891 §6.1.3: when an OPT record is present the wire RCODE is 12 bits:
   // the 4 low bits come from the header, the 8 high bits come from the OPT
   // record's TTL high byte. Merge them so callers see the full 12-bit value.
@@ -412,9 +484,21 @@ Packet.Question.parse = Packet.Question.decode = function (reader) {
   return question;
 };
 
+// A non-numeric TYPE or CLASS would be written as 16 zero bits, turning a typo
+// such as Packet.TYPE.AAA (undefined) into a valid-looking type 0 on the wire.
+const assertCode = (value, field, context) => {
+  if (!Number.isInteger(value) || value < 0 || value > 0xffff) {
+    throw new Error(
+      `${context}: ${field} must be a 16-bit integer, got ${JSON.stringify(value)}`,
+    );
+  }
+};
+
 Packet.Question.encode = function (question, writer) {
   const ownsWriter = !writer;
   writer = writer || new Packet.Writer();
+  assertCode(question.type, 'type', `Question encode "${question.name}"`);
+  assertCode(question.class, 'class', `Question encode "${question.name}"`);
   Packet.Name.encode(question.name, writer);
   writer.write(question.type, 16);
   writer.write(question.class, 16);
@@ -464,15 +548,15 @@ Packet.Resource.prototype.toBuffer = function (writer) {
  */
 Packet.Resource.encode = function (resource, writer) {
   writer = writer || new Packet.Writer();
+  assertCode(resource.type, 'type', `Resource encode "${resource.name}"`);
+  assertCode(resource.class, 'class', `Resource encode "${resource.name}"`);
   Packet.Name.encode(resource.name, writer);
   writer.write(resource.type, 16);
   writer.write(resource.class, 16);
   // RFC 2181 §8: TTL is an unsigned 32-bit value but high-bit values are
   // historically unsafe; clamp to 2^31 - 1 on the wire.
   writer.write(Math.min(resource.ttl >>> 0, 0x7fffffff), 32);
-  const encoder = Object.keys(Packet.TYPE).filter(function (type) {
-    return resource.type === Packet.TYPE[type];
-  })[0];
+  const encoder = Packet.TYPE_NAME[resource.type];
   // RDLENGTH is owned here, not by each rdata encoder. We write a 16-bit
   // placeholder, dispatch to the rdata encoder, then back-fill the length.
   // This is what lets rdata encoders use compression pointers without having
@@ -480,8 +564,9 @@ Packet.Resource.encode = function (resource, writer) {
   const rdlenBitPos = writer.bitLength();
   writer.write(0, 16);
   const rdataBitStart = writer.bitLength();
-  if (encoder in Packet.Resource && Packet.Resource[encoder].encode) {
-    Packet.Resource[encoder].encode(resource, writer);
+  const codec = Packet.Resource[encoder];
+  if (codec && codec.encode) {
+    codec.encode(resource, writer);
   } else {
     debug('node-dns > unknown encoder %s(%j)', encoder, resource.type);
     // Fallback for unknown / decoder-only types: round-trip the raw RDATA the
@@ -517,17 +602,43 @@ Packet.Resource.parse = Packet.Resource.decode = function (reader) {
   // treated them as signed. Anything with the high bit set is clamped to
   // 2^31 - 1 so it cannot be misinterpreted as a negative value.
   if (resource.ttl > 0x7fffffff) resource.ttl = 0x7fffffff;
-  let length = reader.read(16);
-  const parser = Object.keys(Packet.TYPE).filter(function (type) {
-    return resource.type === Packet.TYPE[type];
-  })[0];
-  if (parser in Packet.Resource) {
-    resource = Packet.Resource[parser].decode.call(resource, reader, length);
-  } else {
-    debug('node-dns > unknown parser type: %s(%j)', parser, resource.type);
-    const arr = [];
-    while (length--) arr.push(reader.read(8));
-    resource.data = Buffer.from(arr);
+  const length = reader.read(16);
+  const label = `${Packet.typeName(resource.type)} record "${resource.name}"`;
+  if (length * 8 > reader.remaining()) {
+    throw new Error(
+      `${label} declares RDLENGTH ${length} but only ` +
+        `${reader.remaining() / 8} octet(s) remain in the message`,
+    );
+  }
+  // RDLENGTH delimits the record on the wire, so it — not the rdata decoder —
+  // decides where the next record begins. Restoring the cursor to that boundary
+  // keeps a malformed record from cascading into the ones that follow, and lets
+  // Packet.parse report the failure as recoverable.
+  const rdataStart = reader.offset;
+  const rdataEnd = rdataStart + length * 8;
+  const parser = Packet.TYPE_NAME[resource.type];
+  const codec = Packet.Resource[parser];
+  try {
+    if (codec && codec.decode) {
+      resource = codec.decode.call(resource, reader, length);
+      if (reader.offset !== rdataEnd) {
+        throw new Error(
+          `${label} rdata consumed ${(reader.offset - rdataStart) / 8} ` +
+            `octet(s), RDLENGTH declares ${length}`,
+        );
+      }
+    } else {
+      debug('node-dns > unknown parser type: %s(%j)', parser, resource.type);
+      // RFC 3597 §5: retain unknown rdata verbatim so it can be re-emitted.
+      resource.data = Buffer.from(
+        reader.buffer.subarray(rdataStart / 8, rdataEnd / 8),
+      );
+    }
+  } catch (cause) {
+    cause.recovered = true;
+    throw cause;
+  } finally {
+    reader.offset = rdataEnd;
   }
   return resource;
 };
@@ -660,6 +771,13 @@ Packet.Resource.A = function (address) {
 
 Packet.Resource.A.encode = function (record, writer) {
   writer = writer || new Packet.Writer();
+  // Without this check a malformed address writes NaN octets, silently
+  // encoding as 0.0.0.0 on the wire.
+  if (!net.isIPv4(record.address)) {
+    throw new Error(
+      `A encode: invalid IPv4 address ${JSON.stringify(record.address)}`,
+    );
+  }
   // RDLENGTH is written by Packet.Resource.encode; only emit the rdata here.
   // No toBuffer() — the caller owns materialization (avoids O(N) re-walks of
   // the message bit-array per record).
@@ -669,6 +787,10 @@ Packet.Resource.A.encode = function (record, writer) {
 };
 
 Packet.Resource.A.decode = function (reader, length) {
+  // RFC 1035 §3.4.1 — ADDRESS is exactly one 32-bit value.
+  if (length !== 4) {
+    throw new Error(`A decode: RDLENGTH is ${length}, expected 4`);
+  }
   const parts = [];
   while (length--) parts.push(reader.read(8));
   this.address = parts.join('.');
@@ -717,6 +839,11 @@ Packet.Resource.MX.decode = function (reader, length) {
  */
 Packet.Resource.AAAA = {
   decode: function (reader, length) {
+    // RFC 3596 §2.2 — a 128-bit address. An odd or short length would step the
+    // `length -= 2` countdown past zero and read into the following records.
+    if (length !== 16) {
+      throw new Error(`AAAA decode: RDLENGTH is ${length}, expected 16`);
+    }
     const parts = [];
     while (length) {
       length -= 2;
@@ -727,6 +854,11 @@ Packet.Resource.AAAA = {
   },
   encode: function (record, writer) {
     writer = writer || new Packet.Writer();
+    if (!net.isIPv6(record.address)) {
+      throw new Error(
+        `AAAA encode: invalid IPv6 address ${JSON.stringify(record.address)}`,
+      );
+    }
     fromIPv6(record.address).forEach(function (part) {
       writer.write(parseInt(part, 16), 16);
     });
@@ -778,16 +910,13 @@ Packet.Resource.SPF = Packet.Resource.TXT = {
     while (bytesRead < length) {
       const chunkLength = reader.read(8);
       bytesRead++;
-      // A character-string whose length runs past the end of RDATA would
-      // make us read into the next record. Skip the remainder of the rdata
-      // before throwing so the next record decodes from the correct offset
-      // instead of cascading the error through every following RR.
+      // A character-string whose length runs past the end of RDATA would make
+      // us read into the next record; Packet.Resource.parse restores the cursor
+      // to the RDLENGTH boundary so the following records still decode.
       if (chunkLength > length - bytesRead) {
-        const remaining = length - bytesRead;
-        for (let i = 0; i < remaining; i++) reader.read(8);
         throw new Error(
           `TXT decode: character-string of ${chunkLength} octets overruns ` +
-            `RDATA (${remaining} octets remaining)`,
+            `RDATA (${length - bytesRead} octets remaining)`,
         );
       }
       const bytes = Buffer.alloc(chunkLength);
@@ -926,23 +1055,34 @@ Packet.Resource.EDNS.decode = function (reader, length) {
   this.doFlag = !!(ttl & 0x8000);
   this.rdata = [];
 
-  while (length) {
+  // RFC 6891 §6.1.2 — RDATA is a sequence of {code, length, data} triples.
+  while (length > 0) {
+    if (length < 4) {
+      throw new Error(
+        `EDNS decode: ${length} octet(s) left in RDATA, too few for an ` +
+          'option header',
+      );
+    }
     const optionCode = reader.read(16);
     const optionLength = reader.read(16); // In octet (https://tools.ietf.org/html/rfc6891#page-8)
+    length -= 4;
+    if (optionLength > length) {
+      throw new Error(
+        `EDNS decode: option ${optionCode} declares ${optionLength} octet(s) ` +
+          `but only ${length} remain in RDATA`,
+      );
+    }
 
-    const decoder = Object.keys(Packet.EDNS_OPTION_CODE).filter(
-      function (type) {
-        return optionCode === Packet.EDNS_OPTION_CODE[type];
-      },
-    )[0];
-    if (
-      decoder in Packet.Resource.EDNS &&
-      Packet.Resource.EDNS[decoder].decode
-    ) {
-      const rdata = Packet.Resource.EDNS[decoder].decode(reader, optionLength);
-      this.rdata.push(rdata);
+    const decoder = Packet.EDNS_OPTION_NAME[optionCode];
+    const codec = Packet.Resource.EDNS[decoder];
+    if (codec && codec.decode) {
+      const optionEnd = reader.offset + optionLength * 8;
+      this.rdata.push(codec.decode(reader, optionLength));
+      // An option decoder that mis-counts would shift every option after it.
+      reader.offset = optionEnd;
     } else {
-      reader.read(optionLength); // Ignore data that doesn't understand
+      // Skip the option body; `read` counts bits, the option length is octets.
+      reader.offset += optionLength * 8;
       debug(
         'node-dns > unknown EDNS rdata decoder %s(%j)',
         decoder,
@@ -950,7 +1090,7 @@ Packet.Resource.EDNS.decode = function (reader, length) {
       );
     }
 
-    length = length - 4 - optionLength;
+    length -= optionLength;
   }
   return this;
 };
@@ -960,17 +1100,11 @@ Packet.Resource.EDNS.encode = function (record, writer) {
   // RDLENGTH is owned by Packet.Resource.encode; emit option records back to
   // back into the main writer.
   for (const rdata of record.rdata) {
-    const encoder = Object.keys(Packet.EDNS_OPTION_CODE).filter(
-      function (type) {
-        return rdata.ednsCode === Packet.EDNS_OPTION_CODE[type];
-      },
-    )[0];
-    if (
-      encoder in Packet.Resource.EDNS &&
-      Packet.Resource.EDNS[encoder].encode
-    ) {
+    const encoder = Packet.EDNS_OPTION_NAME[rdata.ednsCode];
+    const codec = Packet.Resource.EDNS[encoder];
+    if (codec && codec.encode) {
       const w = new Packet.Writer();
-      Packet.Resource.EDNS[encoder].encode(rdata, w);
+      codec.encode(rdata, w);
       writer.write(rdata.ednsCode, 16);
       writer.write(w.buffer.length / 8, 16);
       writer.writeBuffer(w);
@@ -997,12 +1131,27 @@ Packet.Resource.EDNS.ECS = function (clientIp) {
 };
 
 Packet.Resource.EDNS.ECS.decode = function (reader, length) {
+  // RFC 7871 §6 — family (2), source prefix (1), scope prefix (1), then the
+  // leftmost ceil(sourcePrefixLength / 8) octets of the address.
+  if (length < 4) {
+    throw new Error(
+      `EDNS.ECS decode: option is ${length} octet(s), expected at least 4`,
+    );
+  }
   const rdata = {};
   rdata.ednsCode = Packet.EDNS_OPTION_CODE.ECS;
   rdata.family = reader.read(16);
   rdata.sourcePrefixLength = reader.read(8);
   rdata.scopePrefixLength = reader.read(8);
   length -= 4;
+
+  const addressOctets = { 1: 4, 2: 16 }[rdata.family];
+  if (addressOctets !== undefined && length > addressOctets) {
+    throw new Error(
+      `EDNS.ECS decode: family ${rdata.family} address is ${length} octet(s), ` +
+        `at most ${addressOctets}`,
+    );
+  }
 
   if (rdata.family === 1) {
     const ipv4Octets = [];
@@ -1018,7 +1167,9 @@ Packet.Resource.EDNS.ECS.decode = function (reader, length) {
 
   if (rdata.family === 2) {
     const ipv6Segments = [];
-    for (; length; length -= 2) {
+    // A truncated address can leave an odd octet; `length > 0` keeps the
+    // countdown from stepping past zero and reading into the next option.
+    for (; length > 0; length -= 2) {
       const segment = reader.read(16).toString(16);
       ipv6Segments.push(segment);
     }
@@ -1089,10 +1240,20 @@ Packet.Resource.CAA = {
     });
   },
   decode: function (reader, length) {
+    // RFC 8659 §4.1 — flags octet, tag length octet, then tag and value.
+    if (length < 2) {
+      throw new Error(`CAA decode: RDLENGTH is ${length}, expected at least 2`);
+    }
     this.flags = reader.read(8);
     const tagLength = reader.read(8);
-    const bytes = [];
     let remaining = length - 2;
+    if (tagLength > remaining) {
+      throw new Error(
+        `CAA decode: tag length ${tagLength} overruns RDATA ` +
+          `(${remaining} octets remaining)`,
+      );
+    }
+    const bytes = [];
     while (remaining--) bytes.push(reader.read(8));
     const buffer = Buffer.from(bytes);
     this.tag = buffer.slice(0, tagLength).toString('utf8');
@@ -1108,6 +1269,12 @@ Packet.Resource.CAA = {
  */
 Packet.Resource.DNSKEY = {
   decode: function (reader, length) {
+    // RFC 4034 §2.1 — flags (2), protocol (1), algorithm (1), then the key.
+    if (length < 4) {
+      throw new Error(
+        `DNSKEY decode: RDLENGTH is ${length}, expected at least 4`,
+      );
+    }
     const RData = [];
     while (RData.length < length) {
       RData.push(reader.read(8));
@@ -1156,39 +1323,30 @@ Packet.Resource.DNSKEY = {
  */
 Packet.Resource.RRSIG = {
   decode: function (reader, length) {
-    function dateForSig(date) {
-      // javascript date is from millisecond
-      date = new Date(date * 1000);
-      const definitions = {
-        month: date.getUTCMonth() + 1,
-        date: date.getUTCDate(),
-        hour: date.getUTCHours(),
-        minutes: date.getUTCMinutes(),
-        seconds: date.getUTCSeconds(),
-      };
-      let i;
-      for (i in definitions) {
-        // if less than 10 > single
-        if (definitions[i] < 10) {
-          definitions[i] = '0' + '' + definitions[i];
-        }
-      }
-      return (
-        date.getFullYear() +
-        '' +
-        definitions.month +
-        '' +
-        definitions.date +
-        '' +
-        definitions.hour +
-        '' +
-        definitions.minutes +
-        '' +
-        definitions.seconds
-      );
+    // RFC 4034 §3.2 — inception/expiration are presented as YYYYMMDDHHmmSS in
+    // UTC. Every field has to come from the UTC accessors: mixing in the local
+    // year puts the wrong year on a signature near a year boundary.
+    function dateForSig(seconds) {
+      const date = new Date(seconds * 1000);
+      const pad = n => String(n).padStart(2, '0');
+      return [
+        date.getUTCFullYear(),
+        pad(date.getUTCMonth() + 1),
+        pad(date.getUTCDate()),
+        pad(date.getUTCHours()),
+        pad(date.getUTCMinutes()),
+        pad(date.getUTCSeconds()),
+      ].join('');
     }
 
-    // calculate max-offset uint8
+    // RFC 4034 §3.1 — 18 octets of fixed fields, then the signer name and the
+    // signature. Anything shorter cannot hold a signature.
+    if (length < 18) {
+      throw new Error(
+        `RRSIG decode: RDLENGTH is ${length}, expected at least 18`,
+      );
+    }
+    const rdataStart = reader.offset;
     const maxOffset = reader.offset + length * 8;
     /*
      * Stuff sign contains 18 octets
@@ -1207,6 +1365,13 @@ Packet.Resource.RRSIG = {
       signature.push(reader.read(8));
     }
     this.signature = Buffer.from(signature).toString('base64');
+    // There is no RRSIG encoder — the decoded form is lossy (timestamps become
+    // display strings). Retaining the raw rdata lets Packet.Resource.encode's
+    // unknown-type fallback re-emit the record byte for byte, so a proxy that
+    // parses and re-serializes a signed response does not strip the signature.
+    this.data = Buffer.from(
+      reader.buffer.subarray(rdataStart / 8, maxOffset / 8),
+    );
     return this;
   },
 };
@@ -1232,34 +1397,66 @@ Packet.createResourceFromQuestion = function (base, record) {
   return resource;
 };
 
+/**
+ * Read one length-prefixed DNS message from a stream (RFC 1035 §4.2.2).
+ * @param  {stream.Readable} socket
+ * @return {Promise<Buffer>} the message, without its 2-octet length prefix
+ */
 Packet.readStream = socket => {
   let chunks = [];
   let chunklen = 0;
-  let received = false;
-  let expected = false;
+  let settled = false;
+  let expected = null;
   return new Promise((resolve, reject) => {
-    const processMessage = () => {
-      if (received) return;
-      received = true;
-      const buffer = Buffer.concat(chunks, chunklen);
-      resolve(buffer.slice(2));
+    const fail = error => {
+      if (settled) return;
+      settled = true;
+      reject(error);
     };
-    socket.on('end', processMessage);
-    socket.on('error', reject);
+    const processMessage = () => {
+      if (settled) return;
+      settled = true;
+      const buffer = Buffer.concat(chunks, chunklen);
+      // Bound by the declared length: anything past it belongs to the next
+      // pipelined message, not this one.
+      resolve(buffer.slice(2, 2 + expected));
+    };
+    socket.on('end', () => {
+      // A message cut short is reported as such. Resolving with the partial
+      // bytes instead would surface as a puzzling decode failure downstream.
+      if (expected === null) {
+        return fail(
+          new DecodeError(
+            `connection closed after ${chunklen} octet(s), before the ` +
+              '2-octet message length prefix (RFC 1035 §4.2.2)',
+          ),
+        );
+      }
+      if (chunklen < 2 + expected) {
+        return fail(
+          new DecodeError(
+            `connection closed after ${chunklen - 2} of ${expected} ` +
+              'declared message octet(s)',
+          ),
+        );
+      }
+      processMessage();
+    });
+    socket.on('error', fail);
     socket.on('readable', () => {
       let chunk;
       while ((chunk = socket.read()) !== null) {
         chunks.push(chunk);
         chunklen += chunk.length;
       }
-      if (!expected && chunklen >= 2) {
+      if (expected === null && chunklen >= 2) {
         if (chunks.length > 1) {
           chunks = [Buffer.concat(chunks, chunklen)];
         }
         expected = chunks[0].readUInt16BE(0);
       }
 
-      if (chunklen >= 2 + expected) {
+      if (expected !== null && chunklen >= 2 + expected) {
         processMessage();
       }
     });

@@ -67,7 +67,9 @@ const readStream = res =>
       .on('end', () => {
         const data = Buffer.concat(chunks);
         if (res.statusCode !== 200) {
-          reject(new Error(`HTTP ${res.statusCode}: ${data.toString()}`));
+          return reject(
+            new Error(`HTTP ${res.statusCode}: ${data.toString()}`),
+          );
         }
         resolve(data);
       });

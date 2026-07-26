@@ -1,4 +1,5 @@
 const assert = require('node:assert');
+const { PassThrough } = require('node:stream');
 const test = require('./test');
 const { Packet } = require('..');
 
@@ -1364,4 +1365,389 @@ test('Packet.parse tolerates multiple questions', function () {
   assert.equal(parsed.questions[0].type, Packet.TYPE.A);
   assert.equal(parsed.questions[1].name, 'two.test');
   assert.equal(parsed.questions[1].type, Packet.TYPE.AAAA);
+});
+
+// ── Decode failure reporting ────────────────────────────────────────────────
+
+test('Packet.parse rejects a message too short to hold a header', function () {
+  assert.throws(
+    () => Packet.parse(Buffer.from('INVALID')),
+    err =>
+      err instanceof Packet.DecodeError &&
+      /7 octets, too short for the 12-octet header/.test(err.message),
+  );
+});
+
+test('Packet.parse rejects a non-Buffer argument', function () {
+  assert.throws(
+    () => Packet.parse('not a buffer'),
+    /expected a Buffer, got string/,
+  );
+  assert.throws(() => Packet.parse(null), /expected a Buffer, got null/);
+});
+
+test('Packet.parse reports no errors for a well-formed message', function () {
+  const parsed = Packet.parse(response);
+  assert.deepEqual(parsed.errors, []);
+});
+
+test('Packet.parse records why a record was dropped', function () {
+  // answer 1 is a TXT whose character-string overruns its RDLENGTH; answer 2
+  // is a well-formed A record that must still decode.
+  const pkt = Buffer.from([
+    0x00, 0x01, 0x00, 0x00, 0x00, 0x00, 0x00, 0x02, 0x00, 0x00, 0x00, 0x00,
+    0x01, 0x74, 0x00, 0x00, 0x10, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00,
+    0x05, 0x0a, 0x61, 0x62, 0x63, 0x64, 0x01, 0x61, 0x00, 0x00, 0x01, 0x00,
+    0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x04, 0xc0, 0x00, 0x02, 0x07,
+  ]);
+  const parsed = Packet.parse(pkt);
+  assert.equal(parsed.answers.length, 1);
+  assert.equal(parsed.errors.length, 1);
+  const [error] = parsed.errors;
+  assert.ok(error instanceof Packet.DecodeError);
+  assert.equal(error.section, 'answers');
+  assert.equal(error.index, 0);
+  assert.equal(error.offset, 12, 'the record began 12 octets in');
+  assert.equal(error.recovered, true, 'RDLENGTH let decoding resume');
+  assert.match(error.message, /answers\[0\] at offset 12: TXT decode/);
+  assert.match(error.message, /overruns RDATA/);
+  // header counts still describe the wire, so a caller can see 1 of 2 survived
+  assert.equal(parsed.header.ancount, 2);
+});
+
+test('Packet.parse stops and reports when the reader is left misaligned', function () {
+  // ancount claims 2 answers but the message ends mid-way through the first
+  // record's name: nothing after it can be located, so decoding must stop.
+  const pkt = Buffer.from([
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x02,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x05,
+    0x70,
+    0x61,
+    0x72, // a 5-octet label with only 3 octets present
+  ]);
+  const parsed = Packet.parse(pkt);
+  assert.equal(parsed.answers.length, 0);
+  assert.equal(
+    parsed.errors.length,
+    1,
+    'one error, not one per phantom record',
+  );
+  assert.equal(parsed.errors[0].recovered, false);
+  assert.match(parsed.errors[0].message, /read past end of message/);
+});
+
+test('Packet.parse reports an RDLENGTH that overruns the message', function () {
+  const pkt = Buffer.from([
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
+    0x61,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    0x3c,
+    0xff,
+    0xff,
+    0xc0,
+    0x00,
+    0x02,
+    0x07, // RDLENGTH 65535, 4 octets present
+  ]);
+  const parsed = Packet.parse(pkt);
+  assert.equal(parsed.answers.length, 0);
+  assert.match(
+    parsed.errors[0].message,
+    /A record "a" declares RDLENGTH 65535 but only 4 octet\(s\) remain/,
+  );
+});
+
+test('Packet.parse reports rdata that does not fill its RDLENGTH', function () {
+  // An MX record whose exchange name ends 3 octets short of RDLENGTH. The name
+  // decoder cannot notice, so Resource.parse compares against RDLENGTH.
+  const pkt = Buffer.from([
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    0x00,
+    0x01,
+    0x61,
+    0x00,
+    0x00,
+    0x0f,
+    0x00,
+    0x01,
+    0x00,
+    0x00,
+    0x00,
+    0x3c,
+    0x00,
+    0x09, // RDLENGTH 9
+    0x00,
+    0x0a,
+    0x01,
+    0x62,
+    0x00, // priority + name "b" = 5 octets
+    0x00,
+    0x00,
+    0x00,
+    0x00, // 4 stray octets
+  ]);
+  const parsed = Packet.parse(pkt);
+  assert.equal(parsed.answers.length, 0);
+  assert.match(
+    parsed.errors[0].message,
+    /MX record "a" rdata consumed 5 octet\(s\), RDLENGTH declares 9/,
+  );
+  assert.equal(parsed.errors[0].recovered, true);
+});
+
+test('Resource#A decode rejects an RDLENGTH other than 4', function () {
+  assert.throws(
+    () =>
+      Packet.Resource.A.decode.call({}, new Packet.Reader(Buffer.alloc(6)), 6),
+    /A decode: RDLENGTH is 6, expected 4/,
+  );
+});
+
+test('Resource#AAAA decode rejects a short or odd RDLENGTH', function () {
+  // A `length -= 2` countdown from an odd value would step past zero and read
+  // into whatever follows.
+  assert.throws(
+    () =>
+      Packet.Resource.AAAA.decode.call(
+        {},
+        new Packet.Reader(Buffer.alloc(9)),
+        9,
+      ),
+    /AAAA decode: RDLENGTH is 9, expected 16/,
+  );
+});
+
+test('Resource#CAA decode rejects a tag length past the rdata', function () {
+  const reader = new Packet.Reader(Buffer.from([0x00, 0x40, 0x61, 0x62]));
+  assert.throws(
+    () => Packet.Resource.CAA.decode.call({}, reader, 4),
+    /tag length 64 overruns RDATA \(2 octets remaining\)/,
+  );
+});
+
+test('Resource#A encode rejects an address that is not IPv4', function () {
+  assert.throws(
+    () =>
+      Packet.Resource.A.encode({ address: 'not-an-ip' }, new Packet.Writer()),
+    /A encode: invalid IPv4 address "not-an-ip"/,
+  );
+});
+
+test('Resource#AAAA encode rejects an address that is not IPv6', function () {
+  assert.throws(
+    () =>
+      Packet.Resource.AAAA.encode(
+        { address: '192.0.2.1' },
+        new Packet.Writer(),
+      ),
+    /AAAA encode: invalid IPv6 address "192.0.2.1"/,
+  );
+});
+
+test('EDNS#decode skips an unknown option by octets, not bits', function () {
+  // Unknown option 0x1234 (4 octets) followed by an ECS option. If the skip
+  // advanced by bits, the ECS option that follows would be misread.
+  const rdata = Buffer.from([
+    0x12,
+    0x34,
+    0x00,
+    0x04,
+    0xde,
+    0xad,
+    0xbe,
+    0xef, // unknown option
+    0x00,
+    0x08,
+    0x00,
+    0x07,
+    0x00,
+    0x01,
+    0x18,
+    0x00,
+    0x0a,
+    0x0b,
+    0x0c, // ECS
+  ]);
+  const record = Packet.Resource.EDNS.decode.call(
+    { ttl: 0 },
+    new Packet.Reader(rdata),
+    rdata.length,
+  );
+  assert.equal(record.rdata.length, 1, 'only the ECS option is understood');
+  assert.equal(record.rdata[0].ednsCode, Packet.EDNS_OPTION_CODE.ECS);
+  assert.equal(record.rdata[0].sourcePrefixLength, 24);
+  assert.equal(record.rdata[0].ip, '10.11.12.0');
+});
+
+test('EDNS#decode rejects an option length past the end of rdata', function () {
+  const rdata = Buffer.from([0x00, 0x08, 0x00, 0x20, 0x00, 0x01]);
+  assert.throws(
+    () =>
+      Packet.Resource.EDNS.decode.call(
+        { ttl: 0 },
+        new Packet.Reader(rdata),
+        rdata.length,
+      ),
+    /option 8 declares 32 octet\(s\) but only 2 remain/,
+  );
+});
+
+test('Packet.typeName names known and unknown types (RFC 3597 §5)', function () {
+  assert.equal(Packet.typeName(Packet.TYPE.AAAA), 'AAAA');
+  assert.equal(Packet.typeName(43), 'TYPE43');
+});
+
+test('Reader#read past the end of the message says so', function () {
+  const reader = new Packet.Reader(Buffer.from([0x01, 0x02]));
+  assert.throws(
+    () => reader.read(32),
+    err =>
+      err instanceof RangeError &&
+      /wanted 32 bits at bit offset 0, message is 2 octets/.test(err.message),
+  );
+});
+
+test('Resource#RRSIG decodes UTC timestamps and re-encodes verbatim', function () {
+  // inception 2024-01-02T03:04:05Z, expiration one day later. The date fields
+  // must all come from UTC accessors — a local-time year would be wrong for
+  // signatures near a year boundary.
+  const inception = Math.floor(Date.UTC(2024, 0, 2, 3, 4, 5) / 1000);
+  const expiration = inception + 86400;
+  const writer = new Packet.Writer();
+  writer.write(Packet.TYPE.A, 16);
+  writer.write(8, 8); // algorithm
+  writer.write(2, 8); // labels
+  writer.write(3600, 32); // original TTL
+  writer.write(expiration, 32);
+  writer.write(inception, 32);
+  writer.write(0x4d2, 16); // key tag
+  Packet.Name.encode('example.com', writer);
+  for (const byte of Buffer.from('signature-bytes')) writer.write(byte, 8);
+  const rdata = writer.toBuffer();
+
+  const packet = new Packet();
+  packet.header.qr = 1;
+  packet.answers.push({
+    name: 'example.com',
+    type: Packet.TYPE.RRSIG,
+    class: Packet.CLASS.IN,
+    ttl: 3600,
+    data: rdata,
+  });
+  const parsed = Packet.parse(packet.toBuffer());
+  assert.deepEqual(parsed.errors, []);
+  const [rrsig] = parsed.answers;
+  assert.equal(rrsig.sigType, Packet.TYPE.A);
+  assert.equal(rrsig.algorithm, 8);
+  assert.equal(rrsig.keyTag, 0x4d2);
+  assert.equal(rrsig.signer, 'example.com');
+  assert.equal(rrsig.inception, '20240102030405');
+  assert.equal(rrsig.expiration, '20240103030405');
+  assert.equal(
+    Buffer.from(rrsig.signature, 'base64').toString(),
+    'signature-bytes',
+  );
+  // Re-serializing must not strip the signature: there is no RRSIG encoder, so
+  // the raw rdata retained by the decoder is what makes the round trip work.
+  const reparsed = Packet.parse(parsed.toBuffer());
+  assert.deepEqual(reparsed.errors, []);
+  assert.deepEqual(reparsed.answers[0].data, rdata);
+  assert.equal(reparsed.answers[0].signature, rrsig.signature);
+});
+
+test('Packet.readStream returns only the declared message', async function () {
+  const stream = new PassThrough();
+  const message = Buffer.from([0x00, 0x01, 0x02, 0x03]);
+  const framed = Buffer.concat([Buffer.from([0x00, message.length]), message]);
+  // A second pipelined message follows; it must not leak into the first read.
+  stream.end(Buffer.concat([framed, framed]));
+  assert.deepEqual(await Packet.readStream(stream), message);
+});
+
+test('Packet.readStream reports a stream that ends before the length prefix', async function () {
+  const stream = new PassThrough();
+  stream.end(Buffer.from([0x00]));
+  await assert.rejects(
+    Packet.readStream(stream),
+    /closed after 1 octet\(s\), before the 2-octet message length prefix/,
+  );
+});
+
+test('Packet.readStream reports a message cut short', async function () {
+  const stream = new PassThrough();
+  stream.end(Buffer.from([0x00, 0x10, 0xaa, 0xbb]));
+  await assert.rejects(
+    Packet.readStream(stream),
+    /closed after 2 of 16 declared message octet\(s\)/,
+  );
+});
+
+test('Question#encode rejects a non-numeric type', function () {
+  // Packet.TYPE.AAA is a typo for AAAA and evaluates to undefined; writing it
+  // would silently produce a valid-looking type 0 question.
+  const packet = new Packet();
+  packet.questions.push({
+    name: 'typo.test',
+    type: Packet.TYPE.AAA,
+    class: Packet.CLASS.IN,
+  });
+  assert.throws(
+    () => packet.toBuffer(),
+    /Question encode "typo.test": type must be a 16-bit integer, got undefined/,
+  );
+});
+
+test('Resource#encode rejects a missing class', function () {
+  const packet = new Packet();
+  packet.header.qr = 1;
+  packet.answers.push({
+    name: 'noclass.test',
+    type: Packet.TYPE.A,
+    ttl: 60,
+    address: '192.0.2.1',
+  });
+  assert.throws(
+    () => packet.toBuffer(),
+    /Resource encode "noclass.test": class must be a 16-bit integer/,
+  );
 });

@@ -29,6 +29,7 @@ const options = {
   // nameServers: ['8.8.8.8']  — array of DNS server IPs (default: Google + 114dns)
   // port: 53                  — DNS server port (number)
   // recursive: true           — Recursion Desired flag (boolean, default true)
+  // timeout: 3000             — per-name-server timeout in milliseconds
 };
 const dns = new dns2(options);
 
@@ -52,6 +53,74 @@ The high-level `DNS` class exposes convenience methods for common record types:
 | `resolveRRSIG(domain)`  | RRSIG       | varies                                                                    |
 
 For any record type not listed above, use `dns.resolve(domain, 'TYPE')` directly.
+
+Every name server is queried in parallel and the first successful reply wins. If
+all of them fail, the rejection names each server and its reason.
+
+### When a packet fails to decode
+
+`Packet.parse` throws a `Packet.DecodeError` when a message cannot be decoded at
+all — it is shorter than a 12-octet header, or not a Buffer:
+
+```js
+try {
+  Packet.parse(buffer);
+} catch (err) {
+  // "message is 7 octets, too short for the 12-octet header (RFC 1035 §4.1.1)"
+  console.error(err.message);
+}
+```
+
+Once the header decodes, a malformed _record_ no longer disappears silently.
+Records that cannot be decoded are dropped — a half-populated record would be
+worse than none — and the reason is reported on `packet.errors`:
+
+```js
+const packet = Packet.parse(buffer);
+
+for (const err of packet.errors) {
+  console.error(err.message);
+  // "answers[0] at offset 12: TXT decode: character-string of 10 octets
+  //  overruns RDATA (4 octets remaining)"
+  err.section; // 'questions' | 'answers' | 'authorities' | 'additionals'
+  err.index; // position within that section
+  err.offset; // octet offset in the message where the record started
+  err.recovered; // see below
+}
+```
+
+`packet.errors` is empty for a clean parse, so `packet.errors.length` is the test
+for "did anything go wrong". Comparing a section's length against its header
+count (`packet.answers.length` vs `packet.header.ancount`) shows how much of the
+message survived.
+
+`err.recovered` distinguishes the two kinds of failure:
+
+- `true` — the damage was confined to one record's RDATA. RDLENGTH says where
+  the next record begins, so decoding continued and later records are intact.
+- `false` — the failure left the reader misaligned (a truncated message, or a
+  name that ran off the end). Nothing after that point can be located, so
+  decoding stopped there instead of emitting junk records.
+
+Servers surface the same information. A query that cannot be decoded at all
+raises `requestError`; one that partially decodes reaches the handler with
+`request.errors` populated, which is enough to answer `FORMERR` if you prefer:
+
+```js
+dns2
+  .createServer({
+    udp: true,
+    handle: (request, send) => {
+      if (request.errors.length) {
+        const response = Packet.createResponseFromRequest(request);
+        response.header.rcode = Packet.RCODE.FORMERR;
+        return send(response);
+      }
+      // ...
+    },
+  })
+  .on('requestError', err => console.error('undecodable query:', err.message));
+```
 
 #### Example: SOA record lookup
 

@@ -4,9 +4,31 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/).
 
 ### Unreleased
 
+### [3.0.1] - 2026-07-26
+
+- feat(packet): Packet.parse stops at a failure that leaves the reader misaligned
+- feat(packet): RDLENGTH bounds every rdata decoder, so a malformed record no longer cascades (RFC 1035 §4.1.3)
+- feat(packet): `Packet.typeName`, `Packet.TYPE_NAME`, `Packet.EDNS_OPTION_NAME`
+- feat(client/udp): a query timeout names the last dropped response and why
+- feat(index): `resolve()` uses `Promise.any`, so one dead NS no longer fails all
+- fix(packet): parse throws `Packet.DecodeError` for a message with no usable header
+- fix(packet): parse no longer swallows per-record decode failures, reports on `packet.errors`
+- fix(packet): encoding a record or question whose TYPE/CLASS is not a 16-bit int throws
+- fix(packet): encoding an A/AAAA record with an invalid address throws, was `0.0.0.0`
+- fix(packet): RRSIG was unreachable — `Packet.TYPE.RRSIG` (46) was missing
+- fix(packet): RRSIG timestamps mixed the local-time year with UTC fields
+- fix(packet): RRSIG retains raw rdata so re-serializing keeps the signature
+- fix(packet): EDNS skipped unknown options by bits instead of octets
+- fix(packet): length validation for A, AAAA, CAA, DNSKEY, RRSIG and ECS rdata
+- fix(packet): `Packet.readStream` rejects a truncated message
+- fix: DNS option timeout is ms and now reaches the client (default `3000`)
+- fix(index): `resolveA(domain, clientIp)` never sent the ECS option
+- fix(client/doh): a non-200 response rejected and then resolved
+- fix(packet): drop the `Array.prototype.flatMap` polyfill for Node 10
+
 ### [3.0.0] - 2026-05-26
 
-- **BREAKING**, TXT `data` is now always an array of strings
+- BREAKING: TXT `data` is now always an array of strings
 - fix(packet): TXT decode preserves character-string boundaries (RFC 1035 §3.3.14)
 
 ### [2.4.0] - 2026-05-26

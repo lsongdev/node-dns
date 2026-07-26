@@ -1286,3 +1286,97 @@ test('server/udp/tcp without proxyProtocol still work normally', async () => {
   assert.equal(tcpReply.answers[0].address, '10.0.0.2');
   await new Promise(resolve => tcpServer.close(resolve));
 });
+
+test('server#requestError explains why a query could not be decoded', async () => {
+  const server = createServer({ udp: true, tcp: true, handle: () => {} });
+  const servers = await server.listen();
+  const errors = [];
+  server.on('requestError', e => errors.push(e));
+
+  // 8 octets: enough to look like traffic, too few to hold a DNS header.
+  const socket = udp.createSocket('udp4');
+  await new Promise(resolve =>
+    socket.send(Buffer.alloc(8), servers.udp.port, '127.0.0.1', () =>
+      socket.close(resolve),
+    ),
+  );
+  // Give the server a turn to process the datagram.
+  await new Promise(resolve => setTimeout(resolve, 50));
+
+  assert.equal(errors.length, 1);
+  assert.ok(errors[0] instanceof Packet.DecodeError);
+  assert.match(
+    errors[0].message,
+    /8 octets, too short for the 12-octet header/,
+  );
+
+  await server.close();
+});
+
+test('server#handler sees a partially decoded request and its errors', async () => {
+  // A query whose question is fine but whose additional record is malformed:
+  // the handler still gets the question, plus the reason the OPT was dropped.
+  const requests = [];
+  const server = createUDPServer((request, send) => {
+    requests.push(request);
+    send(Packet.createResponseFromRequest(request));
+  });
+  await server.listen(0);
+  const { port } = server.address();
+
+  const query = new Packet();
+  query.header.id = 0x4242;
+  query.questions.push({
+    name: 'partial.test',
+    type: Packet.TYPE.A,
+    class: Packet.CLASS.IN,
+  });
+  const buffer = query.toBuffer();
+  // Append an additional record with a 4-octet RDLENGTH but no rdata, and bump
+  // arcount to 1.
+  const truncatedOpt = Buffer.from([
+    0x00, 0x00, 0x1c, 0x00, 0x01, 0x00, 0x00, 0x00, 0x3c, 0x00, 0x04,
+  ]);
+  const malformed = Buffer.concat([buffer, truncatedOpt]);
+  malformed.writeUInt16BE(1, 10); // arcount
+
+  const socket = udp.createSocket('udp4');
+  const reply = new Promise(resolve =>
+    socket.on('message', msg => resolve(Packet.parse(msg))),
+  );
+  socket.send(malformed, port, '127.0.0.1');
+  await reply;
+  socket.close();
+
+  assert.equal(requests.length, 1);
+  const [request] = requests;
+  assert.equal(request.questions[0].name, 'partial.test');
+  assert.equal(
+    request.additionals.length,
+    0,
+    'the bad record is not delivered',
+  );
+  assert.equal(request.errors.length, 1);
+  assert.equal(request.errors[0].section, 'additionals');
+  assert.match(request.errors[0].message, /RDLENGTH 4 but only 0 octet\(s\)/);
+
+  await new Promise(resolve => server.close(resolve));
+});
+
+test('client/tcp#reports a reply that is cut short', async () => {
+  // A server that frames a 40-octet reply but sends only 4 of them, then
+  // closes. The client must say the message was truncated rather than fail
+  // somewhere inside the decoder.
+  const rude = tcp.createServer(socket => {
+    socket.on('data', () => socket.end(Buffer.from([0x00, 0x28, 0x01, 0x02])));
+  });
+  await new Promise(resolve => rude.listen(0, '127.0.0.1', resolve));
+  const { port } = rude.address();
+
+  const resolve4 = TCPClient({ dns: '127.0.0.1', port });
+  await assert.rejects(
+    resolve4('example.com'),
+    /closed after 2 of 40 declared message octet\(s\)/,
+  );
+  await new Promise(done => rude.close(done));
+});

@@ -35,7 +35,6 @@ class Server extends tcp.Server {
     // flight: we must not close our own write side while a handler may still
     // call send().
     const state = { inFlight: 0, peerEnded: false };
-    client._dnsPipeline = state;
     try {
       if (this.proxyProtocol) {
         const header = await consumeProxyHeader(client);
@@ -68,7 +67,7 @@ class Server extends tcp.Server {
           this.emit(
             'request',
             message,
-            this.response.bind(this, client),
+            this.response.bind(this, client, state),
             client,
           );
         },
@@ -83,7 +82,7 @@ class Server extends tcp.Server {
     }
   }
 
-  response(client, message) {
+  response(client, state, message) {
     if (message instanceof Packet) {
       message = message.toBuffer();
     }
@@ -100,12 +99,9 @@ class Server extends tcp.Server {
     // was the last outstanding response, half-close our side too. Without
     // this guard, a client that sent its query via socket.end(frame) would
     // see us close before its handler runs.
-    const state = client._dnsPipeline;
-    if (state) {
-      if (state.inFlight > 0) state.inFlight--;
-      if (state.peerEnded && state.inFlight === 0 && !client.destroyed) {
-        client.end();
-      }
+    if (state.inFlight > 0) state.inFlight--;
+    if (state.peerEnded && state.inFlight === 0 && !client.destroyed) {
+      client.end();
     }
   }
 }
