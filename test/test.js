@@ -37,7 +37,13 @@ const test = (title, fn, { timeout = DEFAULT_TIMEOUT } = {}) => {
       await withTimeout(fn, title, timeout);
       pending--;
       console.log(color(` ✔  ${title}`, 32));
-    } catch (err) {
+    } catch (thrown) {
+      // A test may throw a primitive. Normalize first: `in` on a non-object
+      // throws a TypeError of its own, masking the failure being reported.
+      const err =
+        thrown instanceof Error
+          ? thrown
+          : Object.assign(new Error(inspect(thrown)), { name: 'ThrownValue' });
       console.error(color(` ✘  ${title}`, 31));
       console.log();
       console.log(color(`   ${err.name}: ${err.message}`, 31));

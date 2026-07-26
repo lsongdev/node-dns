@@ -1582,6 +1582,10 @@ Packet.readStream = socket => {
       socket.removeListener('end', onEnd);
       socket.removeListener('error', fail);
     };
+    // 'end' may have been emitted before these listeners attached, in which
+    // case onEnd will never run and `ended` stays false. readableEnded is the
+    // reliable signal; the flag covers streams that don't implement it.
+    const streamEnded = () => ended || socket.readableEnded === true;
     const fail = error => {
       if (settled) return;
       settled = true;
@@ -1596,9 +1600,9 @@ Packet.readStream = socket => {
       // Bound by the declared length: anything past it belongs to the next
       // pipelined message, not this one. Hand those octets back to the stream
       // so the next reader still sees them. Once the peer has half-closed
-      // there is no next message, and unshift after 'end' would throw.
+      // there is no next message, and unshift after 'end' throws.
       const end = 2 + expected;
-      if (!ended && chunklen > end) socket.unshift(buffer.slice(end));
+      if (!streamEnded() && chunklen > end) socket.unshift(buffer.slice(end));
       resolve(buffer.slice(2, end));
     };
     const onEnd = () => {
@@ -1646,6 +1650,10 @@ Packet.readStream = socket => {
     // Drain anything buffered before our listener attached — in particular the
     // remainder unshifted by a previous readStream call on this socket.
     onReadable();
+    // A stream that has already emitted 'end' will never emit it again, so
+    // nothing above can settle this promise. Reach the same verdict now instead
+    // of waiting for an event that cannot arrive.
+    if (!settled && socket.readableEnded === true) onEnd();
   });
 };
 
