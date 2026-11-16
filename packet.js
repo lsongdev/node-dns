@@ -36,7 +36,22 @@ const toIPv6 = buffer => {
 };
 
 const fromIPv6 = address => {
+  if (!net.isIPv6(address)) {
+    throw new Error(`invalid IPv6 address ${JSON.stringify(address)}`);
+  }
   const digits = address.split(':');
+  // RFC 4291 §2.2: an IPv4 dotted-quad tail represents two 16-bit groups.
+  // Expand it before calculating how many groups "::" must fill.
+  const ipv4 = digits[digits.length - 1];
+  if (net.isIPv4(ipv4)) {
+    const octets = ipv4.split('.').map(Number);
+    digits.splice(
+      digits.length - 1,
+      1,
+      ((octets[0] << 8) | octets[1]).toString(16),
+      ((octets[2] << 8) | octets[3]).toString(16),
+    );
+  }
   // Leading/trailing "::" produces an empty leading/trailing element that is
   // not a zero group of its own; drop it so only the interior "" marks the run.
   if (digits[0] === '') {
@@ -659,6 +674,11 @@ Packet.Resource.encode = function (resource, writer) {
     }
   }
   const rdlen = (writer.bitLength() - rdataBitStart) / 8;
+  if (rdlen > 0xffff) {
+    throw new Error(
+      `${Packet.typeName(resource.type)} encode: RDATA length ${rdlen} exceeds 65535 octets`,
+    );
+  }
   writer.patch(rdlenBitPos, rdlen, 16);
   return writer.toBuffer();
 };
@@ -1030,12 +1050,28 @@ Packet.Resource.SPF = Packet.Resource.TXT = {
         return characterString;
       });
 
-    // write each string to output (RDLENGTH is back-filled by Resource.encode)
+    // RFC 1035 §3.3: each character-string has a one-octet length (max 255).
+    // Preserve explicit array boundaries; split only oversized entries.
     characterStringBuffers.forEach(function (buffer) {
-      writer.write(buffer.length, 8); // text length
-      buffer.forEach(function (c) {
-        writer.write(c, 8);
-      });
+      if (buffer.length === 0) {
+        writer.write(0, 8);
+        return;
+      }
+      for (let start = 0; start < buffer.length; ) {
+        let end = Math.min(start + 255, buffer.length);
+        if (end < buffer.length) {
+          // Do not split within a UTF-8 sequence: TXT.decode converts each
+          // character-string to a separate JS string.
+          let safeEnd = end;
+          while (safeEnd > start && (buffer[safeEnd] & 0xc0) === 0x80) {
+            safeEnd--;
+          }
+          if (safeEnd > start) end = safeEnd;
+        }
+        writer.write(end - start, 8);
+        for (let i = start; i < end; i++) writer.write(buffer[i], 8);
+        start = end;
+      }
     });
   },
 };
@@ -1294,29 +1330,13 @@ Packet.Resource.EDNS.ECS.encode = function (record, writer) {
   }
 };
 
-// Expand a (possibly compressed) IPv6 text address into a 16-byte array.
+// Share the AAAA IPv6 parser with ECS so dotted-quad tails are expanded
+// consistently before truncating to the ECS source prefix length.
 function expandIPv6ToBytes(address) {
-  let head, tail;
-  const idx = address.indexOf('::');
-  if (idx === -1) {
-    head = address.split(':');
-    tail = [];
-  } else {
-    head = address.slice(0, idx).split(':').filter(Boolean);
-    tail = address
-      .slice(idx + 2)
-      .split(':')
-      .filter(Boolean);
-  }
-  const missing = 8 - head.length - tail.length;
-  const groups = [...head, ...new Array(missing).fill('0'), ...tail];
-  const out = new Array(16).fill(0);
-  for (let g = 0; g < 8; g++) {
-    const n = parseInt(groups[g], 16) || 0;
-    out[g * 2] = (n >> 8) & 0xff;
-    out[g * 2 + 1] = n & 0xff;
-  }
-  return out;
+  return fromIPv6(address).flatMap(group => {
+    const value = parseInt(group, 16);
+    return [value >>> 8, value & 0xff];
+  });
 }
 
 // RFC 8914 §3 — EXTRA-TEXT should stay short. It shares the response with the
